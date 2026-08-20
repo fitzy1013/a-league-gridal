@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CellState } from "./types";
 import ShareButton from "./ShareButton";
+import type { CellAnswerCount } from "./GameGrid";
 
 export default function ResultModal({
   open,
@@ -12,8 +13,8 @@ export default function ResultModal({
   date,
   correct,
   total,
-  revealed,
-  onReveal,
+  counts,
+  answerUrl,
   onClose,
 }: {
   open: boolean;
@@ -22,11 +23,14 @@ export default function ResultModal({
   date: string | null;
   correct: number;
   total: number;
-  revealed: boolean;
-  onReveal?: () => void;
+  counts: CellAnswerCount[] | null;
+  answerUrl: (r: number, c: number) => string;
   onClose: () => void;
 }) {
   if (!open) return null;
+
+  const countFor = (r: number, c: number): number | null =>
+    counts?.find((x) => x.r === r && x.c === c)?.count ?? null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -50,38 +54,34 @@ export default function ResultModal({
           <span className="text-lg text-muted-foreground">/ {total}</span>
         </div>
 
-        <div className="mb-5 grid grid-cols-3 gap-1.5" aria-hidden>
+        <p className="mb-2 text-center text-xs text-muted-foreground">
+          Tap a box to view every correct answer for that cell
+        </p>
+
+        <div className="mb-5 grid grid-cols-3 gap-1.5">
           {rows.map((row, r) =>
-            row.map((cell, c) => (
-              <div
-                key={`${r}-${c}`}
-                className={`flex h-10 items-center justify-center rounded text-lg ${
-                  cell.status === "correct"
-                    ? "bg-emerald-500/20"
-                    : cell.status === "incorrect"
-                      ? "bg-red-500/15"
-                      : cell.status === "revealed"
-                        ? "bg-yellow-500/20"
-                        : "bg-muted"
-                }`}
-              >
-                {cell.status === "correct"
-                  ? "🟩"
-                  : cell.status === "incorrect"
-                    ? "🟥"
-                    : cell.status === "revealed"
-                      ? "🟨"
-                      : "⬜"}
-              </div>
-            )),
+            row.map((cell, c) => {
+              const count = countFor(r, c);
+              return (
+                <a
+                  key={`${r}-${c}`}
+                  href={answerUrl(r, c)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex h-10 items-center justify-center rounded text-lg font-bold ${
+                    cell.status === "correct"
+                      ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+                      : cell.status === "incorrect"
+                        ? "bg-red-500/15 text-red-700 dark:text-red-300"
+                        : "bg-muted text-foreground"
+                  } hover:ring-2 hover:ring-ring`}
+                >
+                  {count === null ? "…" : count}
+                </a>
+              );
+            }),
           )}
         </div>
-
-        {!revealed && onReveal && (
-          <Button variant="outline" className="mb-2 w-full" onClick={onReveal} type="button">
-            Reveal answers
-          </Button>
-        )}
 
         <div className="flex gap-2">
           <div className="flex-1">

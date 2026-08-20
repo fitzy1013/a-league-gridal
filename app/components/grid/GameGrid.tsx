@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import { CATEGORY_LABELS } from "@/lib/grid/labels";
 import type { Category } from "@/lib/grid/types";
 import { Button } from "@/components/ui/button";
@@ -13,13 +13,40 @@ import type { CellState, ClientGridSpec, PlayerOption } from "./types";
 
 const EMPTY_CELL: CellState = { playerId: null, playerName: null, status: "empty" };
 
+export interface CellAnswerCount {
+  r: number;
+  c: number;
+  count: number;
+}
+
+async function fetchCounts(spec: ClientGridSpec): Promise<CellAnswerCount[]> {
+  const payload: Record<string, unknown> = { cells: [] as [number, number][] };
+  if (spec.gridId) {
+    payload.gridId = spec.gridId;
+  } else {
+    payload.rowTypes = spec.rowTypes;
+    payload.colTypes = spec.colTypes;
+    payload.rowValues = spec.rowValues;
+    payload.colValues = spec.colValues;
+  }
+  const res = await fetch("/api/cell-answers", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = (await res.json()) as { cells?: CellAnswerCount[] };
+  return data.cells ?? [];
+}
+
 export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userId?: string | null }) {
   const size = spec.rowValues.length;
   const [cells, setCells] = useState<CellState[][]>(() =>
     Array.from({ length: size }, () => Array.from({ length: size }, () => ({ ...EMPTY_CELL }))),
   );
   const [selected, setSelected] = useState<{ r: number; c: number } | null>(null);
-  const [revealed, setRevealed] = useState(false);
+  const [finished, setFinished] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [counts, setCounts] = useState<CellAnswerCount[] | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const recordedRef = useRef(false);
@@ -31,8 +58,18 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
 
   const labelFor = (category: Category) => CATEGORY_LABELS[category];
 
+  const openSummary = useCallback(async () => {
+    setShowResult(true);
+    setCounts(null);
+    try {
+      setCounts(await fetchCounts(spec));
+    } catch {
+      setCounts([]);
+    }
+  }, [spec]);
+
   const applyGuess = async (r: number, c: number, player: PlayerOption) => {
-    if (submitting || revealed) return;
+    if (submitting || finished) return;
     setSubmitting(true);
     try {
       let isCorrect = false;
@@ -70,9 +107,10 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
       setCells(updated);
       setSelected(null);
 
-      const finished = updated.every((row) => row.every((cell) => cell.status !== "empty"));
-      if (finished) {
-        setShowResult(true);
+      const finishedRound = updated.every((row) => row.every((cell) => cell.status !== "empty"));
+      if (finishedRound) {
+        setFinished(true);
+        await openSummary();
         if (spec.mode === "daily" && userId && spec.gridId && !recordedRef.current) {
           recordedRef.current = true;
           const count = updated.flat().filter((cell) => cell.status === "correct").length;
@@ -84,22 +122,29 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
     }
   };
 
-  const reveal = () => {
-    setCells((prev) =>
-      prev.map((row, r) =>
-        row.map((cell, c) => {
-          if (cell.status === "correct") return cell;
-          const sol = spec.solution.find((s) => s.rowIdx === r && s.colIdx === c);
-          return {
-            playerId: sol?.playerId ?? null,
-            playerName: sol?.playerName ?? null,
-            status: "revealed" as const,
-          };
-        }),
-      ),
-    );
-    setRevealed(true);
-    setShowResult(true);
+  const confirmGiveUp = () => {
+    setConfirming(false);
+    setFinished(true);
+    if (spec.mode === "daily" && userId && spec.gridId && !recordedRef.current) {
+      recordedRef.current = true;
+      recordResult(spec.gridId, correct, size * size).catch(() => {});
+    }
+    void openSummary();
+  };
+
+  const answerUrl = (r: number, c: number): string => {
+    if (spec.gridId) {
+      return `/answers?gridId=${encodeURIComponent(spec.gridId)}&r=${r}&c=${c}`;
+    }
+    const params = new URLSearchParams({
+      r: String(r),
+      c: String(c),
+      rowTypes: JSON.stringify(spec.rowTypes),
+      colTypes: JSON.stringify(spec.colTypes),
+      rowValues: JSON.stringify(spec.rowValues),
+      colValues: JSON.stringify(spec.colValues),
+    });
+    return `/answers?${params.toString()}`;
   };
 
   return (
@@ -122,9 +167,9 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
           {spec.mode === "daily" && (
             <ShareButton rows={cells} mode="daily" date={spec.date} correct={correct} total={size * size} />
           )}
-          {!revealed && (
-            <Button variant="ghost" size="sm" onClick={reveal} type="button">
-              Reveal
+          {!finished && (
+            <Button variant="ghost" size="sm" onClick={() => setConfirming(true)} type="button">
+              Give up
             </Button>
           )}
         </div>
@@ -153,9 +198,7 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
 
         {cells.map((row, r) => (
           <Fragment key={`row-${r}`}>
-            <div
-              className="flex flex-col items-center justify-center rounded-md bg-accent px-2 py-2 text-center text-sm"
-            >
+            <div className="flex flex-col items-center justify-center rounded-md bg-accent px-2 py-2 text-center text-sm">
               <span className="leading-tight">{spec.rowValues[r]}</span>
               {spec.rowTypes[r] !== "club" && (
                 <span className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -168,7 +211,7 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
                 key={`cell-${r}-${c}`}
                 cell={cell}
                 selected={selected?.r === r && selected?.c === c}
-                disabled={revealed}
+                disabled={finished}
                 onClick={() => setSelected({ r, c })}
               />
             ))}
@@ -176,7 +219,7 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
         ))}
       </div>
 
-      {selected && !revealed && (
+      {selected && !finished && (
         <div className="mt-4">
           <p className="mb-2 text-sm text-muted-foreground">
             Player who fits{" "}
@@ -192,6 +235,26 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
         </div>
       )}
 
+      {confirming && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl border bg-background p-6 shadow-lg">
+            <h2 className="text-lg font-bold">Give up this round?</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Your score will be recorded and the round will end. You can view the answer summary
+              for each cell.
+            </p>
+            <div className="mt-5 flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setConfirming(false)} type="button">
+                Keep playing
+              </Button>
+              <Button className="flex-1" onClick={confirmGiveUp} type="button">
+                Give up
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ResultModal
         open={showResult}
         rows={cells}
@@ -199,8 +262,8 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
         date={spec.date}
         correct={correct}
         total={size * size}
-        revealed={revealed}
-        onReveal={reveal}
+        counts={counts}
+        answerUrl={answerUrl}
         onClose={() => setShowResult(false)}
       />
     </div>
