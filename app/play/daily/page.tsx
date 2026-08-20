@@ -4,12 +4,13 @@ import GameGrid from "@/app/components/grid/GameGrid";
 import { getTodayGrid } from "@/lib/db/queries";
 import type { Category, CellSolution } from "@/lib/grid/types";
 import { createClient } from "@/lib/supabase/server";
+import { todaySydneyDate } from "@/lib/dates";
 
 export const instant = false;
 
 export default async function DailyPage() {
   const supabase = await createClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todaySydneyDate();
   const grid = await getTodayGrid(supabase, today);
 
   const {
@@ -22,7 +23,7 @@ export default async function DailyPage() {
         <h1 className="text-2xl font-bold">No grid published yet</h1>
         <p className="max-w-md text-muted-foreground">
           The daily grid for {today} hasn&apos;t been generated. The scheduled generator runs at
-          04:00 UTC. Try the unlimited grid in the meantime.
+          04:00 AEST. Try the unlimited grid in the meantime.
         </p>
         <Button asChild>
           <Link href="/play/unlimited">Play Unlimited</Link>

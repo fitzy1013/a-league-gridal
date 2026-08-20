@@ -2,6 +2,7 @@ import { createAdminClient } from "../db/supabase-admin";
 import { loadGridDataset } from "../db/grid-loader";
 import { generateGrid, type GridDataset } from "./generator";
 import type { GridSpec } from "./types";
+import { todaySydneyDate } from "../dates";
 
 export interface GeneratedDailyResult {
   date: string;
@@ -20,7 +21,7 @@ export async function generateDailyGrid(
   const resolvedDataset = dataset ?? (await loadGridDataset(supabase));
   const grid = generateGrid(resolvedDataset);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todaySydneyDate();
   const row = {
     date: today,
     row_type: JSON.stringify(grid.rowTypes),
