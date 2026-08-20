@@ -15,7 +15,7 @@ export type { GridRow };
 
 /**
  * Loads every table the grid generator needs and builds the membership index.
- * Used by the scheduled/on-demand Netlify functions (service-role client).
+ * Used by the scheduled/on-demand API routes (service-role client).
  */
 export async function loadGridDataset(client: SupabaseClient): Promise<GridDataset> {
   const [clubs, players, playerClubs, stats, titles] = await Promise.all([

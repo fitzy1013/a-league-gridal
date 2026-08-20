@@ -14,7 +14,7 @@ export default function UnlimitedPage() {
     setSpec(null);
     setError(null);
     try {
-      const res = await fetch("/.netlify/functions/random-grid", { method: "POST" });
+      const res = await fetch("/api/random-grid", { method: "POST" });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error ?? `Request failed (${res.status})`);
@@ -49,10 +49,12 @@ export default function UnlimitedPage() {
           <div className="flex flex-col items-center gap-4 py-16 text-center">
             <p className="text-destructive">{error}</p>
             <p className="max-w-md text-sm text-muted-foreground">
-              The unlimited grid is served by the Netlify function
-              <code className="mx-1 rounded bg-accent px-1">random-grid</code>. Locally, run the
-              app with <code className="mx-1 rounded bg-accent px-1">netlify dev</code> (or deploy
-              to Netlify) so the function is available.
+              The unlimited grid is served by the API route
+              <code className="mx-1 rounded bg-accent px-1">/api/random-grid</code>. It works with{" "}
+              <code className="mx-1 rounded bg-accent px-1">next dev</code> and on Vercel. If it
+              keeps failing, make sure the Supabase tables are populated (run the scraper once) and
+              that <code className="mx-1 rounded bg-accent px-1">SUPABASE_SERVICE_ROLE_KEY</code> is
+              set.
             </p>
             <Button onClick={load} type="button">
               <RefreshCw className="mr-2 h-4 w-4" />

@@ -1,8 +1,8 @@
-import type { Config } from "@netlify/functions";
-import { createAdminClient } from "../../lib/db/supabase-admin";
-import { parseGeneralPage, parsePlayerStatsPage } from "../../lib/scrape/parse-players";
-import { parseSquadPage } from "../../lib/scrape/parse-squad";
-import { parseClubTitles, parsePlayerAwards } from "../../lib/scrape/parse-titles";
+import { isAuthorizedCron } from "@/lib/cron-auth";
+import { createAdminClient } from "@/lib/db/supabase-admin";
+import { parseGeneralPage, parsePlayerStatsPage } from "@/lib/scrape/parse-players";
+import { parseSquadPage } from "@/lib/scrape/parse-squad";
+import { parseClubTitles, parsePlayerAwards } from "@/lib/scrape/parse-titles";
 import {
   achievementsUrl,
   CLUBS,
@@ -12,17 +12,23 @@ import {
   parseSelectedSeason,
   playerAwardsUrl,
   playerStatsUrl,
-} from "../../lib/scrape/ual";
-import type { ParsedPlayerRow, ParsedSeasonStats } from "../../lib/scrape/types";
+} from "@/lib/scrape/ual";
+import type { ParsedPlayerRow, ParsedSeasonStats } from "@/lib/scrape/types";
 
-export const config: Config = {
-  // 03:00 UTC every 2 days.
-  schedule: "0 3 */2 * *",
-};
+// Long enough for ~24 sequential page fetches. Hobby caps this at 60s.
+export const maxDuration = 60;
 
 const CURRENT_SEASON_FALLBACK = "2025-26";
 
-const handler = async () => {
+/**
+ * Scrapes Ultimate A-League and upserts clubs, players, stats, club history,
+ * and achievements. Triggered by the Vercel cron in vercel.json.
+ */
+export async function GET(request: Request) {
+  if (!isAuthorizedCron(request)) {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   const startedAt = Date.now();
   const supabase = createAdminClient();
   const log: string[] = [];
@@ -170,27 +176,13 @@ const handler = async () => {
   log.push(`player_clubs: ${clubRows.size}`);
   log.push(`duration: ${Date.now() - startedAt}ms`);
 
-  return new Response(JSON.stringify({ ok: true, log }), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-};
-
-export default handler;
-
-interface Upsertable {
-  from(table: string): {
-    upsert(
-      rows: unknown,
-      opts: { onConflict: string },
-    ): PromiseLike<{ error: { message: string } | null }>;
-  };
+  return Response.json({ ok: true, log });
 }
 
-async function upsertChunked<T extends Record<string, unknown>>(
-  supabase: Upsertable,
+async function upsertChunked(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
   table: string,
-  rows: T[],
+  rows: Record<string, unknown>[],
   onConflict: string,
   chunkSize = 500,
 ): Promise<void> {
