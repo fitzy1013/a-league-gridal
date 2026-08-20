@@ -6,6 +6,36 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import type { PlayerOption } from "./types";
 
+// The static player list (public/players.json) is fetched once per session so
+// search never hits /api/players; if it's unavailable we fall back to the API.
+let poolPromise: Promise<PlayerOption[] | null> | null = null;
+
+function loadPlayerPool(): Promise<PlayerOption[] | null> {
+  if (!poolPromise) {
+    poolPromise = fetch("/players.json")
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const data = (await res.json()) as PlayerOption[];
+        return Array.isArray(data) ? data : null;
+      })
+      .catch(() => null);
+  }
+  return poolPromise;
+}
+
+function filterPool(pool: PlayerOption[], query: string): PlayerOption[] {
+  const q = query.trim().toLowerCase();
+  const direct: PlayerOption[] = [];
+  const indirect: PlayerOption[] = [];
+  for (const p of pool) {
+    const name = p.name.toLowerCase();
+    if (!name.includes(q)) continue;
+    if (name.startsWith(q)) direct.push(p);
+    else indirect.push(p);
+  }
+  return [...direct, ...indirect].slice(0, 12);
+}
+
 export default function GuessInput({
   onSelect,
   onClose,
@@ -33,7 +63,17 @@ export default function GuessInput({
 
     let cancelled = false;
     setLoading(true);
-    const timer = setTimeout(async () => {
+
+    void (async () => {
+      const pool = await loadPlayerPool();
+      if (cancelled) return;
+      if (pool) {
+        setResults(filterPool(pool, trimmed));
+        setActiveIndex(0);
+        setLoading(false);
+        return;
+      }
+      // Fallback: search the server (used only when players.json is missing).
       try {
         const res = await fetch(`/api/players?q=${encodeURIComponent(trimmed)}`);
         const data = (await res.json()) as PlayerOption[];
@@ -46,11 +86,10 @@ export default function GuessInput({
       } finally {
         if (!cancelled) setLoading(false);
       }
-    }, 200);
+    })();
 
     return () => {
       cancelled = true;
-      clearTimeout(timer);
     };
   }, [query]);
 

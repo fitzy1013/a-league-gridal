@@ -1,6 +1,7 @@
 {
   "private": true,
   "scripts": {
+    "prebuild": "tsx scripts/generate-players-json.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
