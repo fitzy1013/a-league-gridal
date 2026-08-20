@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/scrape-stats",
-      "schedule": "0 0 3 */2 * *"
+      "schedule": "0 3 */2 * *"
     },
     {
       "path": "/api/generate-daily-grid",
-      "schedule": "0 0 4 * * *"
+      "schedule": "0 4 * * *"
     }
   ]
 }
