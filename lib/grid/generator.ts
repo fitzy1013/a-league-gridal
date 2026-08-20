@@ -228,6 +228,10 @@ export interface GenerateGridOptions {
   goodCandidateCount?: number;
   /** min cells that must be "good" (default half of the grid) */
   minGoodCells?: number;
+  /** a cell is "hard" when it has at most this many answers (default 3) */
+  hardCellMaxAnswers?: number;
+  /** min cells that must be "hard" (default 1) */
+  minHardCells?: number;
 }
 
 export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {}): GridSpec {
@@ -236,6 +240,8 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
   const maxSingletonCells = opts.maxSingletonCells ?? 1;
   const goodCandidateCount = opts.goodCandidateCount ?? 3;
   const minGoodCells = opts.minGoodCells ?? Math.ceil((size * size) / 2);
+  const hardCellMaxAnswers = opts.hardCellMaxAnswers ?? 3;
+  const minHardCells = opts.minHardCells ?? 1;
   const rng = opts.rng ?? Math.random;
   const maxAttempts = 400;
 
@@ -248,6 +254,8 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
         maxSingletonCells,
         goodCandidateCount,
         minGoodCells,
+        hardCellMaxAnswers,
+        minHardCells,
         rng,
       );
     } catch {
@@ -264,6 +272,8 @@ function tryGenerate(
   maxSingletonCells: number,
   goodCandidateCount: number,
   minGoodCells: number,
+  hardCellMaxAnswers: number,
+  minHardCells: number,
   rng: () => number,
 ): GridSpec {
   if (size < 2) throw new Error("size must be >= 2");
@@ -343,6 +353,7 @@ function tryGenerate(
   // 5. Candidate counts per cell: enforce difficulty rules.
   let singletons = 0;
   let goodCells = 0;
+  let hardCells = 0;
   for (let i = 0; i < size; i++) {
     for (let j = 0; j < size; j++) {
       const rowSet = membersOf(dataset, rowCrits[i].category, rowCrits[i].label);
@@ -351,10 +362,12 @@ function tryGenerate(
       if (n === 0) throw new Error("empty cell");
       if (n === 1) singletons++;
       if (n >= goodCandidateCount) goodCells++;
+      if (n <= hardCellMaxAnswers) hardCells++;
     }
   }
   if (singletons > maxSingletonCells) throw new Error("too many singleton cells");
   if (goodCells < minGoodCells) throw new Error("not enough well-answerable cells");
+  if (hardCells < minHardCells) throw new Error("not enough hard cells");
 
   // 6. Solution.
   const solution: CellSolution[] = [];

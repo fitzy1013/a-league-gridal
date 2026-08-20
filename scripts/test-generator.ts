@@ -171,6 +171,7 @@ for (let i = 0; i < 20; i++) {
 
     let singletons = 0;
     let goodCells = 0;
+    let hardCells = 0;
     for (let r = 0; r < GRID_SIZE; r++) {
       for (let c = 0; c < GRID_SIZE; c++) {
         const rowLabel = resolveCriterionLabel(dataset, grid.rowTypes[r], grid.rowValues[r]);
@@ -180,6 +181,7 @@ for (let i = 0; i < 20; i++) {
         const cnt = [...rowSet].filter((p) => colSet.has(p)).length;
         if (cnt === 1) singletons++;
         if (cnt >= 3) goodCells++;
+        if (cnt <= 3) hardCells++;
       }
     }
 
@@ -190,6 +192,7 @@ for (let i = 0; i < 20; i++) {
       !allCellsSolvable ||
       singletons > 1 ||
       goodCells < 5 ||
+      hardCells < 1 ||
       !mutuallyExclusiveOk ||
       !noDupeCategory
     ) {

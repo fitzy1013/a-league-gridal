@@ -40,6 +40,7 @@ async function main() {
 
       let singletons = 0;
       let good = 0;
+      let hard = 0;
       for (let i = 0; i < size; i++) {
         for (let j = 0; j < size; j++) {
           const rowLabel = resolveCriterionLabel(ds, grid.rowTypes[i], grid.rowValues[i]);
@@ -49,16 +50,17 @@ async function main() {
           const cnt = [...rowSet].filter((p) => colSet.has(p)).length;
           if (cnt === 1) singletons++;
           if (cnt >= 3) good++;
+          if (cnt <= 3) hard++;
         }
       }
       singletonHist[singletons] = (singletonHist[singletons] ?? 0) + 1;
       goodHist[good] = (goodHist[good] ?? 0) + 1;
       clubMin = Math.min(clubMin, clubCount);
       clubMax = Math.max(clubMax, clubCount);
-      if (clubCount < 4 || singletons > 1 || good < 5) {
+      if (clubCount < 4 || singletons > 1 || good < 5 || hard < 1) {
         failures++;
         console.log(
-          `FAIL #${n}: clubs=${clubCount} singletons=${singletons} good=${good}`,
+          `FAIL #${n}: clubs=${clubCount} singletons=${singletons} good=${good} hard=${hard}`,
           JSON.stringify(grid.rowValues),
           JSON.stringify(grid.colValues),
         );
