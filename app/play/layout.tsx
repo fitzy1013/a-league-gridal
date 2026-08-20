@@ -1,7 +1,4 @@
 import Link from "next/link";
-import { Suspense } from "react";
-import { AuthButton } from "@/components/auth-button";
-import { hasEnvVars } from "@/lib/utils";
 
 export default function PlayLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -13,18 +10,6 @@ export default function PlayLayout({ children }: { children: React.ReactNode }) 
           </Link>
           <Link href="/play/daily">Daily</Link>
           <Link href="/play/unlimited">Unlimited</Link>
-          {hasEnvVars && <Link href="/protected/stats">Stats</Link>}
-        </div>
-        <div className="flex items-center gap-2">
-          {hasEnvVars ? (
-            <Suspense>
-              <AuthButton />
-            </Suspense>
-          ) : (
-            <Link href="/auth/login" className="text-sm">
-              Sign in
-            </Link>
-          )}
         </div>
       </nav>
       <div className="flex w-full max-w-5xl flex-1 flex-col p-5">{children}</div>
