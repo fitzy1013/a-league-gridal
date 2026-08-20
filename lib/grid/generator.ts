@@ -152,6 +152,42 @@ function membersOf(dataset: GridDataset, category: Category, label: string): Set
   return dataset.members[category].get(label) ?? new Set<number>();
 }
 
+/**
+ * Order-independent signature of a grid: the sorted list of its criteria as
+ * "category:displayLabel". Two grids that differ only by row/column rotation
+ * share the same signature.
+ */
+function gridSignature(dataset: GridDataset, rowCrits: Criterion[], colCrits: Criterion[]): string[] {
+  const toDisplay = (c: Criterion): string => {
+    if (c.category === "club") {
+      const club = dataset.clubs.find((x) => String(x.id) === c.label);
+      return club ? club.name : c.label;
+    }
+    return c.label;
+  };
+  return [...rowCrits, ...colCrits]
+    .map((c) => `${c.category}:${toDisplay(c)}`)
+    .sort();
+}
+
+/**
+ * True when a freshly generated grid is too close to an excluded (recent) one:
+ * either an exact signature match, or fewer than minDiff criteria differ.
+ */
+function clashesWithExcluded(
+  signature: string[],
+  exclude: string[],
+  minDiff: number,
+): boolean {
+  for (const ex of exclude) {
+    const exParts = ex.split("|");
+    const same = signature.filter((c) => exParts.includes(c)).length;
+    if (same === signature.length) return true;
+    if (signature.length - same < minDiff) return true;
+  }
+  return false;
+}
+
 function intersection(a: Set<number>, b: Set<number>): Set<number> {
   const [small, large] = a.size <= b.size ? [a, b] : [b, a];
   const out = new Set<number>();
@@ -232,6 +268,12 @@ export interface GenerateGridOptions {
   hardCellMaxAnswers?: number;
   /** min cells that must be "hard" (default 1) */
   minHardCells?: number;
+  /** sorted signatures ("category:displayLabel") of recent grids to avoid
+   * repeating; the new grid must differ from each in at least minDiffCriteria
+   * criteria */
+  exclude?: string[];
+  /** min criteria that must differ from each excluded grid (default 2) */
+  minDiffCriteria?: number;
 }
 
 export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {}): GridSpec {
@@ -242,6 +284,8 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
   const minGoodCells = opts.minGoodCells ?? Math.ceil((size * size) / 2);
   const hardCellMaxAnswers = opts.hardCellMaxAnswers ?? 3;
   const minHardCells = opts.minHardCells ?? 1;
+  const exclude = opts.exclude ?? [];
+  const minDiffCriteria = opts.minDiffCriteria ?? 2;
   const rng = opts.rng ?? Math.random;
   const maxAttempts = 400;
 
@@ -256,6 +300,8 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
         minGoodCells,
         hardCellMaxAnswers,
         minHardCells,
+        exclude,
+        minDiffCriteria,
         rng,
       );
     } catch {
@@ -274,6 +320,8 @@ function tryGenerate(
   minGoodCells: number,
   hardCellMaxAnswers: number,
   minHardCells: number,
+  exclude: string[],
+  minDiffCriteria: number,
   rng: () => number,
 ): GridSpec {
   if (size < 2) throw new Error("size must be >= 2");
@@ -350,7 +398,15 @@ function tryGenerate(
     colCrits.push(crit);
   }
 
-  // 5. Candidate counts per cell: enforce difficulty rules.
+  // 5. Avoid repeating recent grids (exact match or too few criteria differ).
+  if (exclude.length > 0) {
+    const signature = gridSignature(dataset, rowCrits, colCrits);
+    if (clashesWithExcluded(signature, exclude, minDiffCriteria)) {
+      throw new Error("grid too similar to a recent grid");
+    }
+  }
+
+  // 6. Candidate counts per cell: enforce difficulty rules.
   let singletons = 0;
   let goodCells = 0;
   let hardCells = 0;
@@ -369,7 +425,7 @@ function tryGenerate(
   if (goodCells < minGoodCells) throw new Error("not enough well-answerable cells");
   if (hardCells < minHardCells) throw new Error("not enough hard cells");
 
-  // 6. Solution.
+  // 7. Solution.
   const solution: CellSolution[] = [];
   for (let i = 0; i < size; i++) {
     for (let j = 0; j < size; j++) {
