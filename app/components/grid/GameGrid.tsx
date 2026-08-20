@@ -8,6 +8,7 @@ import { recordResult } from "@/app/play/daily/actions";
 import Cell from "./Cell";
 import GuessInput from "./GuessInput";
 import ResultModal from "./ResultModal";
+import ShareButton from "./ShareButton";
 import type { CellState, ClientGridSpec, PlayerOption } from "./types";
 
 const EMPTY_CELL: CellState = { playerId: null, playerName: null, status: "empty" };
@@ -117,6 +118,9 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
             <span className="rounded-full bg-accent px-3 py-1 text-sm font-medium">
               {correct}/{size * size}
             </span>
+          )}
+          {spec.mode === "daily" && (
+            <ShareButton rows={cells} mode="daily" date={spec.date} correct={correct} total={size * size} />
           )}
           {!revealed && (
             <Button variant="ghost" size="sm" onClick={reveal} type="button">
