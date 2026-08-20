@@ -40,7 +40,7 @@ export async function generateDailyGrid(
   const { data: recent } = await supabase
     .from("grids")
     .select("row_type,col_type,row_values,col_values")
-    .lt("date", today)
+    .lte("date", today)
     .order("date", { ascending: false })
     .limit(14);
 
