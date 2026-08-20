@@ -167,9 +167,13 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
           {spec.mode === "daily" && (
             <ShareButton rows={cells} mode="daily" date={spec.date} correct={correct} total={size * size} />
           )}
-          {!finished && (
+          {!finished ? (
             <Button variant="ghost" size="sm" onClick={() => setConfirming(true)} type="button">
               Give up
+            </Button>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={() => void openSummary()} type="button">
+              View Summary
             </Button>
           )}
         </div>
@@ -258,8 +262,7 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
       <ResultModal
         open={showResult}
         rows={cells}
-        mode={spec.mode}
-        date={spec.date}
+        spec={spec}
         correct={correct}
         total={size * size}
         counts={counts}

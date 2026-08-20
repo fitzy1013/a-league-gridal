@@ -9,12 +9,8 @@ function emojiFor(status: CellState["status"]): string {
   switch (status) {
     case "correct":
       return "🟩";
-    case "incorrect":
-      return "🟥";
-    case "revealed":
-      return "🟨";
     default:
-      return "⬜";
+      return "🟪";
   }
 }
 

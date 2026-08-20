@@ -54,6 +54,7 @@ export async function updateSession(request: NextRequest) {
     !request.nextUrl.pathname.startsWith("/auth") &&
     // Game pages and their API routes are public (anonymous play allowed).
     !request.nextUrl.pathname.startsWith("/play") &&
+    !request.nextUrl.pathname.startsWith("/answers") &&
     !request.nextUrl.pathname.startsWith("/api")
   ) {
     // no user, potentially respond by redirecting the user to the login page
