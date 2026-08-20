@@ -5,6 +5,7 @@ import {
   UAL_BASE,
 } from "./ual";
 import type {
+  ParsedClubMembership,
   ParsedPlayerClubs,
   ParsedPlayerRow,
   ParsedSeasonStats,
@@ -86,6 +87,7 @@ export function parsePlayerStatsPage(
 
     if (type === "pa") {
       stat.appearances = parseIntCell(numericText(5));
+      stat.minutes = parseIntCell(numericText(6));
     } else if (type === "pg") {
       stat.appearances = parseIntCell(numericText(5));
       stat.goals = parseIntCell(numericText(6));
@@ -133,6 +135,62 @@ export function parseGeneralPage(html: string): ParsedPlayerClubs[] {
     if (clubIds.length > 0) {
       result.push({ playerId, clubIds });
     }
+  });
+
+  return result;
+}
+
+/**
+ * Parses a club's All Players page (/club/?club_id=N&info=allplayers).
+ *
+ * Column layout (verified 2026-08):
+ * Player | Position | Nationality | Current Club | GP | Goals | YC | RC | Wins | Win% | Age (Debut)
+ * This is the complete all-time membership list for a club.
+ */
+export function parseAllPlayersPage(
+  html: string,
+  clubId: number,
+  clubName: string,
+): ParsedClubMembership[] {
+  const $ = cheerio.load(html);
+  const result: ParsedClubMembership[] = [];
+
+  $("table.table.is-striped tbody tr").each((_, tr) => {
+    const tds = $(tr).find("td");
+    if (tds.length < 5) return;
+
+    const playerLink = $(tds[0]).find("a").first();
+    const href = playerLink.attr("href") ?? "";
+    const playerIdMatch = href.match(/player_id=(\d+)/);
+    if (!playerIdMatch) return;
+    const playerId = Number(playerIdMatch[1]);
+    const name = playerLink.text().trim();
+    if (!name) return;
+
+    const position = normalizePosition($(tds[1]).text().trim());
+
+    const nationalityDetail = $(tds[2]).find(".nationality-detail").first();
+    let nationality: string | undefined;
+    let nationalityFlagUrl: string | undefined;
+    if (nationalityDetail.length > 0) {
+      const flagImg = nationalityDetail.find("img.nationality-flag").first();
+      nationality = flagImg.attr("alt") ?? (nationalityDetail.text().trim() || undefined);
+      const src = flagImg.attr("src");
+      if (src) {
+        nationalityFlagUrl = src.startsWith("http") ? src : `${UAL_BASE}${src}`;
+      }
+    }
+
+    result.push({
+      playerId,
+      name,
+      position,
+      clubId,
+      clubName,
+      nationality,
+      nationalityFlagUrl,
+      clubAppearances: parseIntCell($(tds[4]).text()),
+    });
   });
 
   return result;

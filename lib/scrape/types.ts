@@ -23,6 +23,7 @@ export interface ParsedSeasonStats {
   yellowCards?: number;
   redCards?: number;
   cleanSheets?: number;
+  minutes?: number;
 }
 
 export interface ParsedPlayerClubs {
@@ -51,6 +52,17 @@ export interface ParsedSquadMember {
   clubName: string;
   nationality?: string;
   nationalityFlagUrl?: string;
+}
+
+export interface ParsedClubMembership {
+  playerId: number;
+  name: string;
+  position?: string;
+  clubId: number;
+  clubName: string;
+  nationality?: string;
+  nationalityFlagUrl?: string;
+  clubAppearances?: number;
 }
 
 export type StatType = "pa" | "pg" | "pb" | "pc";

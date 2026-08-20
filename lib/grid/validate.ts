@@ -28,14 +28,6 @@ export async function playerSatisfiesCriterion(
         .maybeSingle();
       return member != null;
     }
-    case "nationality": {
-      const { data: player } = await db
-        .from("players")
-        .select("nationality")
-        .eq("id", playerId)
-        .maybeSingle();
-      return player?.nationality === displayLabel;
-    }
     case "titles": {
       const band = bandForLabel("titles", displayLabel);
       if (!band) return false;
@@ -47,12 +39,13 @@ export async function playerSatisfiesCriterion(
     }
     case "appearances":
     case "goals":
-    case "red_cards": {
+    case "red_cards":
+    case "minutes": {
       const band = bandForLabel(category, displayLabel);
       if (!band) return false;
       const { data: stat } = await db
         .from("player_season_stats")
-        .select("appearances,goals,red_cards")
+        .select("appearances,goals,red_cards,minutes")
         .eq("player_id", playerId)
         .eq("season", "all")
         .maybeSingle();
@@ -62,7 +55,9 @@ export async function playerSatisfiesCriterion(
           ? stat.appearances
           : category === "goals"
             ? stat.goals
-            : stat.red_cards;
+            : category === "red_cards"
+              ? stat.red_cards
+              : stat.minutes;
       return value != null && value >= band.min && value <= band.max;
     }
   }

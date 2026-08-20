@@ -1,5 +1,5 @@
 import type { ClubRow, PlayerClubRow, PlayerRow, SeasonStatRow } from "../db/queries";
-import { bandLabelFor, GRID_SIZE } from "./labels";
+import { GRID_SIZE, NUMERIC_BANDS } from "./labels";
 import type { Category, CellSolution, GridSpec } from "./types";
 
 export interface GridPlayerView {
@@ -35,11 +35,11 @@ export interface BuildDatasetOptions {
 export function buildDataset(opts: BuildDatasetOptions): GridDataset {
   const members: GridDataset["members"] = {
     club: new Map(),
-    nationality: new Map(),
     appearances: new Map(),
     goals: new Map(),
     red_cards: new Map(),
     titles: new Map(),
+    minutes: new Map(),
   };
 
   const playerMap: Map<number, GridPlayerView> = new Map();
@@ -67,32 +67,32 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     addToMembers("club", String(pc.club_id), pc.player_id);
   }
 
-  for (const p of opts.players) {
-    if (p.nationality) addToMembers("nationality", p.nationality, p.id);
-  }
-
   const titleCount = new Map<number, number>();
   for (const id of opts.titlePlayerIds) {
     titleCount.set(id, (titleCount.get(id) ?? 0) + 1);
   }
 
+  // Players join EVERY cumulative band their value clears (e.g. a player with
+  // 220 apps is in "1+", "50+", "100+" AND "200+"). This keeps the "X+"
+  // labels semantically accurate for generation and validation.
+  const addToBands = (
+    category: Extract<Category, "appearances" | "goals" | "red_cards" | "titles" | "minutes">,
+    value: number,
+    playerId: number,
+  ) => {
+    for (const band of NUMERIC_BANDS[category]) {
+      if (value >= band.min && value <= band.max) {
+        addToMembers(category, band.label, playerId);
+      }
+    }
+  };
+
   for (const s of opts.stats) {
-    const appearances = s.appearances ?? 0;
-    const goals = s.goals ?? 0;
-    const redCards = s.red_cards ?? 0;
-
-    const appsBand = bandLabelFor("appearances", appearances);
-    if (appsBand) addToMembers("appearances", appsBand, s.player_id);
-
-    const goalsBand = bandLabelFor("goals", goals);
-    if (goalsBand) addToMembers("goals", goalsBand, s.player_id);
-
-    const redBand = bandLabelFor("red_cards", redCards);
-    if (redBand) addToMembers("red_cards", redBand, s.player_id);
-
-    const titles = titleCount.get(s.player_id) ?? 0;
-    const titlesBand = bandLabelFor("titles", titles);
-    if (titlesBand) addToMembers("titles", titlesBand, s.player_id);
+    addToBands("appearances", s.appearances ?? 0, s.player_id);
+    addToBands("goals", s.goals ?? 0, s.player_id);
+    addToBands("red_cards", s.red_cards ?? 0, s.player_id);
+    addToBands("titles", titleCount.get(s.player_id) ?? 0, s.player_id);
+    addToBands("minutes", s.minutes ?? 0, s.player_id);
   }
 
   return {
@@ -162,11 +162,11 @@ function intersection(a: Set<number>, b: Set<number>): Set<number> {
 }
 
 const NON_CLUB_CATEGORIES: Category[] = [
-  "nationality",
   "appearances",
   "goals",
   "red_cards",
   "titles",
+  "minutes",
 ];
 
 interface Criterion {
@@ -174,10 +174,21 @@ interface Criterion {
   label: string;
 }
 
-function intersectsAll(dataset: GridDataset, candidate: Criterion, others: Criterion[]): boolean {
+/**
+ * Minimum intersection size between a candidate criterion and every existing
+ * constraint. 0 means the candidate is infeasible; higher is better (more
+ * answers per cell).
+ */
+function criterionScore(dataset: GridDataset, candidate: Criterion, others: Criterion[]): number {
   const c = membersOf(dataset, candidate.category, candidate.label);
-  if (c.size === 0) return false;
-  return others.every((o) => intersection(c, membersOf(dataset, o.category, o.label)).size > 0);
+  if (c.size === 0) return 0;
+  let min = Infinity;
+  for (const o of others) {
+    const inter = intersection(c, membersOf(dataset, o.category, o.label)).size;
+    if (inter === 0) return 0;
+    if (inter < min) min = inter;
+  }
+  return min;
 }
 
 function labelsFor(dataset: GridDataset, category: Category): string[] {
@@ -190,16 +201,20 @@ function pickCriterion(
   constraints: Criterion[],
   rng: () => number,
 ): Criterion {
-  for (const category of shuffle(categories, rng)) {
-    const labels = shuffle(labelsFor(dataset, category), rng);
-    for (const label of labels) {
-      const candidate: Criterion = { category, label };
-      if (intersectsAll(dataset, candidate, constraints)) {
-        return candidate;
-      }
+  const candidates: { criterion: Criterion; score: number }[] = [];
+  for (const category of categories) {
+    for (const label of labelsFor(dataset, category)) {
+      const score = criterionScore(dataset, { category, label }, constraints);
+      if (score > 0) candidates.push({ criterion: { category, label }, score });
     }
   }
-  throw new Error("no feasible criterion");
+  if (candidates.length === 0) throw new Error("no feasible criterion");
+
+  const ranked = shuffle(candidates, rng).sort((a, b) => b.score - a.score);
+  const best = ranked[0].score;
+  const pool = ranked.filter((c) => c.score >= Math.max(2, Math.floor(best * 0.6)));
+  if (pool.length === 0) pool.push(ranked[0]);
+  return pickOne(pool, rng).criterion;
 }
 
 export interface GenerateGridOptions {
@@ -207,17 +222,34 @@ export interface GenerateGridOptions {
   rng?: () => number;
   /** guaranteed distinct clubs across rows + columns (>= 4 per spec) */
   minDistinctClubs?: number;
+  /** max cells that have exactly one answer (default 1) */
+  maxSingletonCells?: number;
+  /** a cell is "good" when it has at least this many answers (default 3) */
+  goodCandidateCount?: number;
+  /** min cells that must be "good" (default half of the grid) */
+  minGoodCells?: number;
 }
 
 export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {}): GridSpec {
   const size = opts.size ?? GRID_SIZE;
   const minDistinctClubs = opts.minDistinctClubs ?? 4;
+  const maxSingletonCells = opts.maxSingletonCells ?? 1;
+  const goodCandidateCount = opts.goodCandidateCount ?? 3;
+  const minGoodCells = opts.minGoodCells ?? Math.ceil((size * size) / 2);
   const rng = opts.rng ?? Math.random;
-  const maxAttempts = 150;
+  const maxAttempts = 400;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      return tryGenerate(dataset, size, minDistinctClubs, rng);
+      return tryGenerate(
+        dataset,
+        size,
+        minDistinctClubs,
+        maxSingletonCells,
+        goodCandidateCount,
+        minGoodCells,
+        rng,
+      );
     } catch {
       // re-roll
     }
@@ -229,6 +261,9 @@ function tryGenerate(
   dataset: GridDataset,
   size: number,
   minDistinctClubs: number,
+  maxSingletonCells: number,
+  goodCandidateCount: number,
+  minGoodCells: number,
   rng: () => number,
 ): GridSpec {
   if (size < 2) throw new Error("size must be >= 2");
@@ -251,44 +286,83 @@ function tryGenerate(
     rowCrits.push({ category: "club", label: String(clubId) });
   }
 
-  // 2. Club columns: must share a player with EVERY club row, and be distinct
-  //    from the row clubs so the total distinct club count stays >= 4.
+  // 2. Club columns: must share players with EVERY club row, be distinct from
+  //    the row clubs, and be ranked by how many shared players they offer
+  //    (prefers club cells with several answers, not singletons).
   const rowClubMemberSets = rowCrits.map((c) => membersOf(dataset, "club", c.label));
-  const candidates = clubIds.filter((clubId) => {
-    if (rowClubs.includes(clubId)) return false;
-    const set = membersOf(dataset, "club", String(clubId));
-    return rowClubMemberSets.every((r) => intersection(r, set).size > 0);
-  });
+  const candidates = clubIds
+    .filter((clubId) => !rowClubs.includes(clubId))
+    .map((clubId) => {
+      const set = membersOf(dataset, "club", String(clubId));
+      let minShared = Infinity;
+      for (const r of rowClubMemberSets) {
+        const inter = intersection(r, set).size;
+        if (inter === 0) {
+          minShared = 0;
+          break;
+        }
+        if (inter < minShared) minShared = inter;
+      }
+      return { clubId, minShared };
+    })
+    .filter((c) => c.minShared > 0);
   if (candidates.length < kC) throw new Error("no feasible club columns");
-  for (const clubId of sampleDistinct(candidates, kC, rng)) {
+  const rankedClubs = shuffle(candidates, rng).sort((a, b) => b.minShared - a.minShared);
+  for (const { clubId } of rankedClubs.slice(0, kC)) {
     colCrits.push({ category: "club", label: String(clubId) });
   }
 
   const distinctClubs = new Set([...rowClubs, ...colCrits.map((c) => Number(c.label))]).size;
   if (distinctClubs < minDistinctClubs) throw new Error("too few distinct clubs");
 
-  // 3. Remaining rows (non-club categories).
-  const rowCategories = sampleDistinct(NON_CLUB_CATEGORIES, size - kR, rng);
+  // 3. Remaining rows + columns (non-club categories). appearances and
+  //    minutes are too similar, so they are mutually exclusive: pick a single
+  //    combined pool of distinct categories, then split it between rows/cols.
+  const totalNonClub = size - kR + size - kC;
+  const PAIR: Category[] = ["appearances", "minutes"];
+  const OTHER: Category[] = NON_CLUB_CATEGORIES.filter((c) => !PAIR.includes(c));
+  let nonClubPool: Category[] = [];
+  if (totalNonClub > OTHER.length || rng() < 0.75) {
+    nonClubPool.push(pickOne(PAIR, rng));
+  }
+  nonClubPool.push(...sampleDistinct(OTHER, totalNonClub - nonClubPool.length, rng));
+  nonClubPool = shuffle(nonClubPool, rng);
+  const rowCategories = nonClubPool.slice(0, size - kR);
+  const colCategories = nonClubPool.slice(size - kR);
   for (const category of rowCategories) {
     const crit = pickCriterion(dataset, [category], colCrits, rng);
     rowCrits.push(crit);
   }
 
   // 4. Remaining columns (non-club categories) must intersect all rows.
-  const colCategories = sampleDistinct(NON_CLUB_CATEGORIES, size - kC, rng);
   for (const category of colCategories) {
     const crit = pickCriterion(dataset, [category], rowCrits, rng);
     colCrits.push(crit);
   }
 
-  // 5. Solution.
+  // 5. Candidate counts per cell: enforce difficulty rules.
+  let singletons = 0;
+  let goodCells = 0;
+  for (let i = 0; i < size; i++) {
+    for (let j = 0; j < size; j++) {
+      const rowSet = membersOf(dataset, rowCrits[i].category, rowCrits[i].label);
+      const colSet = membersOf(dataset, colCrits[j].category, colCrits[j].label);
+      const n = intersection(rowSet, colSet).size;
+      if (n === 0) throw new Error("empty cell");
+      if (n === 1) singletons++;
+      if (n >= goodCandidateCount) goodCells++;
+    }
+  }
+  if (singletons > maxSingletonCells) throw new Error("too many singleton cells");
+  if (goodCells < minGoodCells) throw new Error("not enough well-answerable cells");
+
+  // 6. Solution.
   const solution: CellSolution[] = [];
   for (let i = 0; i < size; i++) {
     for (let j = 0; j < size; j++) {
       const rowSet = membersOf(dataset, rowCrits[i].category, rowCrits[i].label);
       const colSet = membersOf(dataset, colCrits[j].category, colCrits[j].label);
       const candidates = [...intersection(rowSet, colSet)];
-      if (candidates.length === 0) throw new Error("empty cell");
       const playerId = pickOne(candidates, rng);
       solution.push({
         rowIdx: i,

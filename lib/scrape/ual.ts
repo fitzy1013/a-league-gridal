@@ -48,6 +48,10 @@ export function clubSquadUrl(clubId: number): string {
   return `${UAL_BASE}/club/?club_id=${clubId}&info=players`;
 }
 
+export function clubAllPlayersUrl(clubId: number): string {
+  return `${UAL_BASE}/club/?club_id=${clubId}&info=allplayers`;
+}
+
 export async function fetchHtml(url: string): Promise<string> {
   const res = await fetch(url, {
     headers: {
@@ -87,9 +91,9 @@ export function normalizePosition(position: string | undefined): string | undefi
   return SHORT_POSITION_TO_FULL[trimmed.toUpperCase()] ?? trimmed;
 }
 
-/** "85" -> 85 ; "1 (0)" -> 1 (total appearances with starts in parens). */
+/** "85" -> 85 ; "1 (0)" -> 1 (total appearances with starts in parens); "28,725" -> 28725. */
 export function parseIntCell(text: string): number | undefined {
-  const trimmed = text.trim();
+  const trimmed = text.trim().replace(/,/g, "");
   if (!trimmed) return undefined;
   const match = trimmed.match(/^(\d+)/);
   return match ? Number(match[1]) : undefined;

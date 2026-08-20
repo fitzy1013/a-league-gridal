@@ -28,6 +28,7 @@ export interface SeasonStatRow {
   yellow_cards: number | null;
   red_cards: number | null;
   clean_sheets: number | null;
+  minutes: number | null;
 }
 
 export interface PlayerTitleRow {
@@ -53,38 +54,67 @@ export interface UserResultRow {
   finished_at: string;
 }
 
+const PAGE_SIZE = 1000;
+
+interface PageResult<T> {
+  data: T[] | null;
+  error: { message: string } | null;
+}
+
+/**
+ * Fetches every row of a query, paginating past Supabase's per-request row
+ * cap (1000 rows).
+ */
+async function fetchAllRows<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<PageResult<T>>,
+): Promise<T[]> {
+  const out: T[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await fetchPage(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`query failed: ${error.message}`);
+    out.push(...((data as T[] | null) ?? []));
+    if (!data || data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return out;
+}
+
 export async function loadClubs(client: SupabaseClient): Promise<ClubRow[]> {
-  const { data } = await client
-    .from("clubs")
-    .select("id,name,short_name,logo_url");
-  return data as ClubRow[] | null ?? [];
+  return fetchAllRows<ClubRow>((from, to) =>
+    client.from("clubs").select("id,name,short_name,logo_url").range(from, to),
+  );
 }
 
 export async function loadPlayers(client: SupabaseClient): Promise<PlayerRow[]> {
-  const { data } = await client
-    .from("players")
-    .select("id,name,position,club_id,nationality,nationality_flag_url");
-  return data as PlayerRow[] | null ?? [];
+  return fetchAllRows<PlayerRow>((from, to) =>
+    client
+      .from("players")
+      .select("id,name,position,club_id,nationality,nationality_flag_url")
+      .range(from, to),
+  );
 }
 
 export async function loadPlayerClubs(client: SupabaseClient): Promise<PlayerClubRow[]> {
-  const { data } = await client
-    .from("player_clubs")
-    .select("player_id,club_id");
-  return data as PlayerClubRow[] | null ?? [];
+  return fetchAllRows<PlayerClubRow>((from, to) =>
+    client.from("player_clubs").select("player_id,club_id").range(from, to),
+  );
 }
 
 export async function loadAllTimeStats(client: SupabaseClient): Promise<SeasonStatRow[]> {
-  const { data } = await client
-    .from("player_season_stats")
-    .select("player_id,appearances,goals,yellow_cards,red_cards,clean_sheets")
-    .eq("season", "all");
-  return data as SeasonStatRow[] | null ?? [];
+  return fetchAllRows<SeasonStatRow>((from, to) =>
+    client
+      .from("player_season_stats")
+      .select("player_id,appearances,goals,yellow_cards,red_cards,clean_sheets,minutes")
+      .eq("season", "all")
+      .range(from, to),
+  );
 }
 
 export async function loadPlayerTitleCounts(client: SupabaseClient): Promise<PlayerTitleRow[]> {
-  const { data } = await client.from("player_titles").select("player_id");
-  return data as PlayerTitleRow[] | null ?? [];
+  return fetchAllRows<PlayerTitleRow>((from, to) =>
+    client.from("player_titles").select("player_id").range(from, to),
+  );
 }
 
 export async function getTodayGrid(

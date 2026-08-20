@@ -1,9 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parseGeneralPage, parsePlayerStatsPage } from "../lib/scrape/parse-players";
+import { parseAllPlayersPage, parseGeneralPage, parsePlayerStatsPage } from "../lib/scrape/parse-players";
 import { parsePlayerAwards } from "../lib/scrape/parse-titles";
-import { buildDataset, generateGrid, playerSatisfies } from "../lib/grid/generator";
-import { ALL_TIME_SEASON } from "../lib/grid/labels";
+import { buildDataset, generateGrid, playerSatisfies, resolveCriterionLabel } from "../lib/grid/generator";
+import { ALL_TIME_SEASON, GRID_SIZE } from "../lib/grid/labels";
 import type { BuildDatasetOptions } from "../lib/grid/generator";
 
 /**
@@ -29,10 +29,25 @@ const pc = parsePlayerStatsPage(read("players_pc_all.html"), "pc", "all");
 const pl = parseGeneralPage(read("players_pl_all.html"));
 const titles = parsePlayerAwards(read("achievements_pa.html"));
 
+// Club All Players pages: complete per-club membership (incl. players who
+// moved clubs). club_3.html is Melbourne Victory.
+const allplayers = new Map<number, ReturnType<typeof parseAllPlayersPage>>();
+let mvMembers: ReturnType<typeof parseAllPlayersPage> = [];
+if (fs.existsSync(path.join(dir, "club_3_allplayers.html"))) {
+  mvMembers = parseAllPlayersPage(read("club_3_allplayers.html"), 3, "Melbourne Victory");
+  allplayers.set(3, mvMembers);
+  console.log(`club 3 allplayers parsed: ${mvMembers.length} players`);
+  const fornaroli = mvMembers.find((m) => m.playerId === 946);
+  if (mvMembers.length < 100 || !fornaroli) {
+    console.error("FAIL: allplayers page missing players (want >=100 incl. Fornaroli 946)");
+    process.exit(1);
+  }
+}
+
 // Merge into the same shapes the scraper would write to the database.
 const playerRows = new Map<number, { id: number; name: string; position: string | null; club_id: number | null; nationality: string | null; nationality_flag_url: string | null }>();
 const clubs = new Map<number, { id: number; name: string; short_name: string; logo_url: string | null }>();
-const stats = new Map<string, { player_id: number; appearances: number | null; goals: number | null; yellow_cards: number | null; red_cards: number | null; clean_sheets: number | null }>();
+const stats = new Map<string, { player_id: number; appearances: number | null; goals: number | null; yellow_cards: number | null; red_cards: number | null; clean_sheets: number | null; minutes: number | null }>();
 
 const addPlayer = (p: {
   playerId: number;
@@ -65,14 +80,15 @@ const addPlayer = (p: {
 
 for (const p of [...pa.players, ...pg.players, ...pb.players, ...pc.players]) addPlayer(p);
 
-const addStat = (s: { playerId: number; appearances?: number; goals?: number; yellowCards?: number; redCards?: number; cleanSheets?: number }) => {
+const addStat = (s: { playerId: number; appearances?: number; goals?: number; yellowCards?: number; redCards?: number; cleanSheets?: number; minutes?: number }) => {
   const key = `${s.playerId}:${ALL_TIME_SEASON}`;
-  const existing = stats.get(key) ?? { player_id: s.playerId, appearances: null, goals: null, yellow_cards: null, red_cards: null, clean_sheets: null };
+  const existing = stats.get(key) ?? { player_id: s.playerId, appearances: null, goals: null, yellow_cards: null, red_cards: null, clean_sheets: null, minutes: null };
   existing.appearances ??= s.appearances ?? null;
   existing.goals ??= s.goals ?? null;
   existing.yellow_cards ??= s.yellowCards ?? null;
   existing.red_cards ??= s.redCards ?? null;
   existing.clean_sheets ??= s.cleanSheets ?? null;
+  existing.minutes ??= s.minutes ?? null;
   stats.set(key, existing);
 };
 for (const s of [...pa.stats, ...pg.stats, ...pb.stats, ...pc.stats]) addStat(s);
@@ -83,6 +99,20 @@ for (const p of playerRows.values()) {
 }
 for (const row of pl) {
   for (const clubId of row.clubIds) playerClubs.set(`${row.playerId}:${clubId}`, { player_id: row.playerId, club_id: clubId });
+}
+for (const m of mvMembers) {
+  playerClubs.set(`${m.playerId}:${m.clubId}`, { player_id: m.playerId, club_id: m.clubId });
+  if (!playerRows.has(m.playerId)) {
+    addPlayer({
+      playerId: m.playerId,
+      name: m.name,
+      position: m.position,
+      clubId: m.clubId,
+      clubName: m.clubName,
+      nationality: m.nationality,
+      nationalityFlagUrl: m.nationalityFlagUrl,
+    });
+  }
 }
 
 const opts: BuildDatasetOptions = {
@@ -134,9 +164,35 @@ for (let i = 0; i < 20; i++) {
 
     const hasClubRow = grid.rowTypes.includes("club");
     const hasClubCol = grid.colTypes.includes("club");
+    const cats = [...grid.rowTypes, ...grid.colTypes].filter((c) => c !== "club");
+    const mutuallyExclusiveOk = !(cats.includes("appearances") && cats.includes("minutes"));
+    const noDupeCategory = cats.every((c, i) => cats.indexOf(c) === i);
     const allCellsSolvable = grid.solution.length === 9 && grid.solution.every((c) => c.playerId > 0);
 
-    if (!hasClubRow || !hasClubCol || distinctClubs.size < 4 || !allCellsSolvable) {
+    let singletons = 0;
+    let goodCells = 0;
+    for (let r = 0; r < GRID_SIZE; r++) {
+      for (let c = 0; c < GRID_SIZE; c++) {
+        const rowLabel = resolveCriterionLabel(dataset, grid.rowTypes[r], grid.rowValues[r]);
+        const colLabel = resolveCriterionLabel(dataset, grid.colTypes[c], grid.colValues[c]);
+        const rowSet = rowLabel === null ? new Set<number>() : dataset.members[grid.rowTypes[r]].get(rowLabel) ?? new Set<number>();
+        const colSet = colLabel === null ? new Set<number>() : dataset.members[grid.colTypes[c]].get(colLabel) ?? new Set<number>();
+        const cnt = [...rowSet].filter((p) => colSet.has(p)).length;
+        if (cnt === 1) singletons++;
+        if (cnt >= 3) goodCells++;
+      }
+    }
+
+    if (
+      !hasClubRow ||
+      !hasClubCol ||
+      distinctClubs.size < 4 ||
+      !allCellsSolvable ||
+      singletons > 1 ||
+      goodCells < 5 ||
+      !mutuallyExclusiveOk ||
+      !noDupeCategory
+    ) {
       failures++;
       console.error("BAD GRID", JSON.stringify(grid, null, 2));
     }

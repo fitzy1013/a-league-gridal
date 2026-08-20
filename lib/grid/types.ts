@@ -1,18 +1,18 @@
 export type Category =
   | "club"
-  | "nationality"
   | "appearances"
   | "goals"
   | "red_cards"
-  | "titles";
+  | "titles"
+  | "minutes";
 
 export const ALL_CATEGORIES: Category[] = [
   "club",
-  "nationality",
   "appearances",
   "goals",
   "red_cards",
   "titles",
+  "minutes",
 ];
 
 export interface NumericBand {
