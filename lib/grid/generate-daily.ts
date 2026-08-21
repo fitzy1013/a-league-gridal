@@ -10,6 +10,11 @@ export interface GeneratedDailyResult {
   upserted: boolean;
 }
 
+/** How many recent grids count toward the club cooldown. */
+const COOLDOWN_GRIDS = 10;
+/** A club used this many times in the cooldown window sits out today. */
+const MAX_CLUB_USES = 3;
+
 /** Order-independent signature of a stored grid, matching the generator's. */
 function signatureFromStoredGrid(g: {
   row_type: string;
@@ -24,6 +29,27 @@ function signatureFromStoredGrid(g: {
     ...ct.map((cat, i) => `${cat}:${g.col_values[i]}`),
   ];
   return items.sort().join("|");
+}
+
+/** Clubs that appeared too often in the recent grids (cooldown). */
+function cooledOutClubs(recent: {
+  row_type: string;
+  col_type: string;
+  row_values: string[];
+  col_values: string[];
+}[]): string[] {
+  const uses = new Map<string, number>();
+  for (const g of recent.slice(0, COOLDOWN_GRIDS)) {
+    const rt = JSON.parse(g.row_type) as Category[];
+    const ct = JSON.parse(g.col_type) as Category[];
+    rt.forEach((cat, i) => {
+      if (cat === "club") uses.set(g.row_values[i], (uses.get(g.row_values[i]) ?? 0) + 1);
+    });
+    ct.forEach((cat, i) => {
+      if (cat === "club") uses.set(g.col_values[i], (uses.get(g.col_values[i]) ?? 0) + 1);
+    });
+  }
+  return [...uses].filter(([, n]) => n >= MAX_CLUB_USES).map(([name]) => name);
 }
 
 /**
@@ -48,6 +74,7 @@ export async function generateDailyGrid(
   const grid = generateGrid(resolvedDataset, {
     exclude,
     minDiffCriteria: 2,
+    excludeClubs: cooledOutClubs(recent ?? []),
   });
 
   const row = {

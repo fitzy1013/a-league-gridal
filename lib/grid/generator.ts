@@ -288,6 +288,11 @@ export interface GenerateGridOptions {
   exclude?: string[];
   /** min criteria that must differ from each excluded grid (default 2) */
   minDiffCriteria?: number;
+  /** club display names that may not be used at all this grid (cooldown) */
+  excludeClubs?: string[];
+  /** min shared players a club column must have with every club row
+   * (default 2; relaxes to 1 when too few candidates) */
+  columnMinShared?: number;
 }
 
 export const DEFAULT_HARD_CELL_MAX_ANSWERS = 10;
@@ -302,6 +307,12 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
   const minHardCells = opts.minHardCells ?? 1;
   const exclude = opts.exclude ?? [];
   const minDiffCriteria = opts.minDiffCriteria ?? 2;
+  const excludeClubIds = new Set(
+    (opts.excludeClubs ?? [])
+      .map((name) => dataset.clubs.find((c) => c.name === name)?.id)
+      .filter((id): id is number => id != null),
+  );
+  const columnMinShared = opts.columnMinShared ?? 2;
   const rng = opts.rng ?? Math.random;
   const maxAttempts = 400;
 
@@ -318,6 +329,8 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
         minHardCells,
         exclude,
         minDiffCriteria,
+        excludeClubIds,
+        columnMinShared,
         rng,
       );
     } catch {
@@ -338,12 +351,16 @@ function tryGenerate(
   minHardCells: number,
   exclude: string[],
   minDiffCriteria: number,
+  excludeClubIds: Set<number>,
+  columnMinShared: number,
   rng: () => number,
 ): GridSpec {
   if (size < 2) throw new Error("size must be >= 2");
 
-  const clubIds = labelsFor(dataset, "club").map((id) => Number(id));
-  if (clubIds.length < minDistinctClubs) {
+  const availableClubIds = labelsFor(dataset, "club")
+    .map((id) => Number(id))
+    .filter((id) => !excludeClubIds.has(id));
+  if (availableClubIds.length < minDistinctClubs) {
     throw new Error("not enough clubs with players in the dataset");
   }
 
@@ -354,35 +371,41 @@ function tryGenerate(
   const rowCrits: Criterion[] = [];
   const colCrits: Criterion[] = [];
 
-  // 1. Club rows.
-  const rowClubs = sampleDistinct(clubIds, kR, rng);
+  // 1. Club rows (uniform sample of the available clubs).
+  const rowClubs = sampleDistinct(availableClubIds, kR, rng);
   for (const clubId of rowClubs) {
     rowCrits.push({ category: "club", label: String(clubId) });
   }
 
-  // 2. Club columns: must share players with EVERY club row, be distinct from
-  //    the row clubs, and be ranked by how many shared players they offer
-  //    (prefers club cells with several answers, not singletons).
+  // 2. Club columns: must share players with EVERY club row and be distinct
+  //    from the row clubs. Sampled uniformly from all candidates above a
+  //    shared-player floor (relaxing to 1 when needed) so no single club
+  //    dominates via ranking.
   const rowClubMemberSets = rowCrits.map((c) => membersOf(dataset, "club", c.label));
-  const candidates = clubIds
-    .filter((clubId) => !rowClubs.includes(clubId))
-    .map((clubId) => {
-      const set = membersOf(dataset, "club", String(clubId));
-      let minShared = Infinity;
-      for (const r of rowClubMemberSets) {
-        const inter = intersection(r, set).size;
-        if (inter === 0) {
-          minShared = 0;
-          break;
-        }
-        if (inter < minShared) minShared = inter;
-      }
-      return { clubId, minShared };
-    })
-    .filter((c) => c.minShared > 0);
-  if (candidates.length < kC) throw new Error("no feasible club columns");
-  const rankedClubs = shuffle(candidates, rng).sort((a, b) => b.minShared - a.minShared);
-  for (const { clubId } of rankedClubs.slice(0, kC)) {
+  const sharedWithRows = (clubId: number): number => {
+    const set = membersOf(dataset, "club", String(clubId));
+    let minShared = Infinity;
+    for (const r of rowClubMemberSets) {
+      const inter = intersection(r, set).size;
+      if (inter === 0) return 0;
+      if (inter < minShared) minShared = inter;
+    }
+    return minShared;
+  };
+  const eligible = availableClubIds.filter((clubId) => !rowClubs.includes(clubId));
+  let floor = columnMinShared;
+  const pool = eligible.map((clubId) => ({ clubId, minShared: sharedWithRows(clubId) }));
+  let viable = pool.filter((c) => c.minShared >= floor);
+  while (viable.length < kC && floor > 1) {
+    floor -= 1;
+    viable = pool.filter((c) => c.minShared >= floor);
+  }
+  if (viable.length < kC) throw new Error("no feasible club columns");
+  for (const clubId of sampleDistinct(
+    viable.map((c) => c.clubId),
+    kC,
+    rng,
+  )) {
     colCrits.push({ category: "club", label: String(clubId) });
   }
 

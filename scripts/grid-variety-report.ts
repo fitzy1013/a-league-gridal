@@ -7,6 +7,23 @@ process.loadEnvFile(".env");
 
 const RUNS = 200;
 const WINDOW = 14; // matches generateDailyGrid's exclusion window
+const COOLDOWN_GRIDS = 10; // matches generateDailyGrid
+const MAX_CLUB_USES = 3; // matches generateDailyGrid
+
+function cooledOut(window: string[][]): string[] {
+  const uses = new Map<string, number>();
+  // window is oldest-first; the cooldown looks at the most recent grids
+  for (const sig of window.slice(-COOLDOWN_GRIDS)) {
+    for (const crit of sig) {
+      if (crit.startsWith("club:")) {
+        uses.set(crit, (uses.get(crit) ?? 0) + 1);
+      }
+    }
+  }
+  return [...uses]
+    .filter(([, n]) => n >= MAX_CLUB_USES)
+    .map(([crit]) => crit.slice("club:".length));
+}
 
 function storedSig(g: {
   row_type: string;
@@ -29,7 +46,7 @@ async function main() {
   const { data: existing } = await supabase
     .from("grids")
     .select("row_type,col_type,row_values,col_values");
-  const window = (existing ?? []).map(storedSig).map((s) => s.join("|")).slice(-WINDOW);
+  const window = (existing ?? []).map(storedSig).slice(-WINDOW);
 
   const slotCounts = new Map<string, number>();
   const gridCounts = new Map<string, number>();
@@ -38,7 +55,11 @@ async function main() {
   for (let i = 0; i < RUNS; i++) {
     let grid;
     try {
-      grid = generateGrid(dataset, { exclude: [...window], minDiffCriteria: 2 });
+      grid = generateGrid(dataset, {
+        exclude: window.map((s) => s.join("|")),
+        minDiffCriteria: 2,
+        excludeClubs: cooledOut(window),
+      });
     } catch {
       failures++;
       continue;
@@ -49,7 +70,7 @@ async function main() {
     ];
     for (const c of crits) slotCounts.set(c, (slotCounts.get(c) ?? 0) + 1);
     for (const c of new Set(crits)) gridCounts.set(c, (gridCounts.get(c) ?? 0) + 1);
-    window.push(crits.sort().join("|"));
+    window.push(crits.sort());
     if (window.length > WINDOW) window.shift();
   }
 
