@@ -1,6 +1,6 @@
 import { createAdminClient } from "../lib/db/supabase-admin";
 import { loadGridDataset } from "../lib/db/grid-loader";
-import { generateGrid, resolveCriterionLabel } from "../lib/grid/generator";
+import { generateGrid, resolveCriterionLabel, DEFAULT_HARD_CELL_MAX_ANSWERS } from "../lib/grid/generator";
 import { GRID_SIZE } from "../lib/grid/labels";
 
 process.loadEnvFile(".env");
@@ -50,7 +50,7 @@ async function main() {
           const cnt = [...rowSet].filter((p) => colSet.has(p)).length;
           if (cnt === 1) singletons++;
           if (cnt >= 3) good++;
-          if (cnt <= 3) hard++;
+          if (cnt <= DEFAULT_HARD_CELL_MAX_ANSWERS) hard++;
         }
       }
       singletonHist[singletons] = (singletonHist[singletons] ?? 0) + 1;

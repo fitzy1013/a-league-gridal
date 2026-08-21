@@ -40,6 +40,7 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     red_cards: new Map(),
     titles: new Map(),
     minutes: new Map(),
+    clubs: new Map(),
   };
 
   const playerMap: Map<number, GridPlayerView> = new Map();
@@ -72,11 +73,20 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     titleCount.set(id, (titleCount.get(id) ?? 0) + 1);
   }
 
+  // Distinct clubs represented per player (one player_clubs row per club).
+  const clubCounts = new Map<number, number>();
+  for (const pc of opts.playerClubs) {
+    clubCounts.set(pc.player_id, (clubCounts.get(pc.player_id) ?? 0) + 1);
+  }
+
   // Players join EVERY cumulative band their value clears (e.g. a player with
   // 220 apps is in "1+", "50+", "100+" AND "200+"). This keeps the "X+"
   // labels semantically accurate for generation and validation.
   const addToBands = (
-    category: Extract<Category, "appearances" | "goals" | "red_cards" | "titles" | "minutes">,
+    category: Extract<
+      Category,
+      "appearances" | "goals" | "red_cards" | "titles" | "minutes" | "clubs"
+    >,
     value: number,
     playerId: number,
   ) => {
@@ -93,6 +103,9 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     addToBands("red_cards", s.red_cards ?? 0, s.player_id);
     addToBands("titles", titleCount.get(s.player_id) ?? 0, s.player_id);
     addToBands("minutes", s.minutes ?? 0, s.player_id);
+
+    const clubCount = clubCounts.get(s.player_id) ?? 0;
+    addToBands("clubs", clubCount, s.player_id);
   }
 
   return {
@@ -203,6 +216,7 @@ const NON_CLUB_CATEGORIES: Category[] = [
   "red_cards",
   "titles",
   "minutes",
+  "clubs",
 ];
 
 interface Criterion {
@@ -264,7 +278,7 @@ export interface GenerateGridOptions {
   goodCandidateCount?: number;
   /** min cells that must be "good" (default half of the grid) */
   minGoodCells?: number;
-  /** a cell is "hard" when it has at most this many answers (default 3) */
+  /** a cell is "hard" when it has at most this many answers (default 10) */
   hardCellMaxAnswers?: number;
   /** min cells that must be "hard" (default 1) */
   minHardCells?: number;
@@ -276,13 +290,15 @@ export interface GenerateGridOptions {
   minDiffCriteria?: number;
 }
 
+export const DEFAULT_HARD_CELL_MAX_ANSWERS = 10;
+
 export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {}): GridSpec {
   const size = opts.size ?? GRID_SIZE;
   const minDistinctClubs = opts.minDistinctClubs ?? 4;
   const maxSingletonCells = opts.maxSingletonCells ?? 1;
   const goodCandidateCount = opts.goodCandidateCount ?? 3;
   const minGoodCells = opts.minGoodCells ?? Math.ceil((size * size) / 2);
-  const hardCellMaxAnswers = opts.hardCellMaxAnswers ?? 3;
+  const hardCellMaxAnswers = opts.hardCellMaxAnswers ?? DEFAULT_HARD_CELL_MAX_ANSWERS;
   const minHardCells = opts.minHardCells ?? 1;
   const exclude = opts.exclude ?? [];
   const minDiffCriteria = opts.minDiffCriteria ?? 2;

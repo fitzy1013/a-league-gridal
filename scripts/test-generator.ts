@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseAllPlayersPage, parseGeneralPage, parsePlayerStatsPage } from "../lib/scrape/parse-players";
 import { parsePlayerAwards } from "../lib/scrape/parse-titles";
-import { buildDataset, generateGrid, playerSatisfies, resolveCriterionLabel } from "../lib/grid/generator";
+import { buildDataset, generateGrid, playerSatisfies, resolveCriterionLabel, DEFAULT_HARD_CELL_MAX_ANSWERS } from "../lib/grid/generator";
 import { ALL_TIME_SEASON, GRID_SIZE } from "../lib/grid/labels";
 import type { BuildDatasetOptions } from "../lib/grid/generator";
 
@@ -181,7 +181,7 @@ for (let i = 0; i < 20; i++) {
         const cnt = [...rowSet].filter((p) => colSet.has(p)).length;
         if (cnt === 1) singletons++;
         if (cnt >= 3) goodCells++;
-        if (cnt <= 3) hardCells++;
+        if (cnt <= DEFAULT_HARD_CELL_MAX_ANSWERS) hardCells++;
       }
     }
 

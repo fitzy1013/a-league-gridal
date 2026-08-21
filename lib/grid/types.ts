@@ -4,7 +4,8 @@ export type Category =
   | "goals"
   | "red_cards"
   | "titles"
-  | "minutes";
+  | "minutes"
+  | "clubs";
 
 export const ALL_CATEGORIES: Category[] = [
   "club",
@@ -13,6 +14,7 @@ export const ALL_CATEGORIES: Category[] = [
   "red_cards",
   "titles",
   "minutes",
+  "clubs",
 ];
 
 export interface NumericBand {

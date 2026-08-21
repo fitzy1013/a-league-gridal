@@ -37,6 +37,16 @@ export async function playerSatisfiesCriterion(
         .eq("player_id", playerId);
       return count != null && count >= band.min && count <= band.max;
     }
+    case "clubs": {
+      const band = bandForLabel("clubs", displayLabel);
+      if (!band) return false;
+      const { data: rows } = await db
+        .from("player_clubs")
+        .select("club_id")
+        .eq("player_id", playerId);
+      const distinct = new Set((rows ?? []).map((r) => r.club_id)).size;
+      return distinct >= band.min && distinct <= band.max;
+    }
     case "appearances":
     case "goals":
     case "red_cards":

@@ -12,10 +12,11 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   red_cards: "Red Cards",
   titles: "Titles",
   minutes: "Minutes",
+  clubs: "Clubs",
 };
 
 export const NUMERIC_BANDS: Record<
-  Extract<Category, "appearances" | "goals" | "red_cards" | "titles" | "minutes">,
+  Extract<Category, "appearances" | "goals" | "red_cards" | "titles" | "minutes" | "clubs">,
   NumericBand[]
 > = {
   appearances: [
@@ -43,10 +44,14 @@ export const NUMERIC_BANDS: Record<
     { label: "5000+", min: 5000, max: Infinity },
     { label: "10000+", min: 10000, max: Infinity },
   ],
+  clubs: [
+    { label: "2+", min: 2, max: Infinity },
+    { label: "3+", min: 3, max: Infinity },
+  ],
 };
 
 export function bandForLabel(
-  category: Extract<Category, "appearances" | "goals" | "red_cards" | "titles" | "minutes">,
+  category: Extract<Category, "appearances" | "goals" | "red_cards" | "titles" | "minutes" | "clubs">,
   label: string,
 ): NumericBand | undefined {
   return NUMERIC_BANDS[category].find((b) => b.label === label);
