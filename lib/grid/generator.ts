@@ -157,6 +157,32 @@ function sampleDistinct<T>(pool: T[], count: number, rng: () => number): T[] {
   return shuffle(pool, rng).slice(0, count);
 }
 
+/**
+ * Weighted sampling without replacement: at each step one item is drawn with
+ * probability proportional to its weight (default 1 when unmapped).
+ */
+function weightedSampleDistinct(
+  items: number[],
+  weights: Map<number, number>,
+  count: number,
+  rng: () => number,
+): number[] {
+  const pool = [...items];
+  const out: number[] = [];
+  while (out.length < count && pool.length > 0) {
+    let total = 0;
+    for (const id of pool) total += Math.max(weights.get(id) ?? 1, 0);
+    let r = rng() * total;
+    let idx = 0;
+    for (; idx < pool.length - 1; idx++) {
+      r -= Math.max(weights.get(pool[idx]) ?? 1, 0);
+      if (r <= 0) break;
+    }
+    out.push(pool.splice(idx, 1)[0]);
+  }
+  return out;
+}
+
 function pickOne<T>(pool: T[], rng: () => number): T {
   return pool[Math.floor(rng() * pool.length)];
 }
@@ -293,6 +319,9 @@ export interface GenerateGridOptions {
   /** min shared players a club column must have with every club row
    * (default 2; relaxes to 1 when too few candidates) */
   columnMinShared?: number;
+  /** per-club selection weights keyed by club display name (default 1);
+   * lower weights make a club appear less often */
+  clubWeights?: Record<string, number>;
 }
 
 export const DEFAULT_HARD_CELL_MAX_ANSWERS = 10;
@@ -313,6 +342,11 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
       .filter((id): id is number => id != null),
   );
   const columnMinShared = opts.columnMinShared ?? 2;
+  const weightsById = new Map<number, number>();
+  for (const c of dataset.clubs) {
+    const w = opts.clubWeights?.[c.name];
+    weightsById.set(c.id, w != null && w > 0 ? w : 1);
+  }
   const rng = opts.rng ?? Math.random;
   const maxAttempts = 400;
 
@@ -331,6 +365,7 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
         minDiffCriteria,
         excludeClubIds,
         columnMinShared,
+        weightsById,
         rng,
       );
     } catch {
@@ -353,6 +388,7 @@ function tryGenerate(
   minDiffCriteria: number,
   excludeClubIds: Set<number>,
   columnMinShared: number,
+  weightsById: Map<number, number>,
   rng: () => number,
 ): GridSpec {
   if (size < 2) throw new Error("size must be >= 2");
@@ -371,8 +407,8 @@ function tryGenerate(
   const rowCrits: Criterion[] = [];
   const colCrits: Criterion[] = [];
 
-  // 1. Club rows (uniform sample of the available clubs).
-  const rowClubs = sampleDistinct(availableClubIds, kR, rng);
+  // 1. Club rows (weighted sample of the available clubs).
+  const rowClubs = weightedSampleDistinct(availableClubIds, weightsById, kR, rng);
   for (const clubId of rowClubs) {
     rowCrits.push({ category: "club", label: String(clubId) });
   }
@@ -401,8 +437,9 @@ function tryGenerate(
     viable = pool.filter((c) => c.minShared >= floor);
   }
   if (viable.length < kC) throw new Error("no feasible club columns");
-  for (const clubId of sampleDistinct(
+  for (const clubId of weightedSampleDistinct(
     viable.map((c) => c.clubId),
+    weightsById,
     kC,
     rng,
   )) {

@@ -1,6 +1,7 @@
 import { createAdminClient } from "../lib/db/supabase-admin";
 import { loadGridDataset } from "../lib/db/grid-loader";
 import { generateGrid } from "../lib/grid/generator";
+import { CLUB_WEIGHTS } from "../lib/grid/generate-daily";
 import type { Category } from "../lib/grid/types";
 
 process.loadEnvFile(".env");
@@ -8,7 +9,7 @@ process.loadEnvFile(".env");
 const RUNS = 200;
 const WINDOW = 14; // matches generateDailyGrid's exclusion window
 const COOLDOWN_GRIDS = 10; // matches generateDailyGrid
-const MAX_CLUB_USES = 3; // matches generateDailyGrid
+const MAX_CLUB_USES = 5; // matches generateDailyGrid
 
 function cooledOut(window: string[][]): string[] {
   const uses = new Map<string, number>();
@@ -59,6 +60,7 @@ async function main() {
         exclude: window.map((s) => s.join("|")),
         minDiffCriteria: 2,
         excludeClubs: cooledOut(window),
+        clubWeights: CLUB_WEIGHTS,
       });
     } catch {
       failures++;

@@ -12,8 +12,20 @@ export interface GeneratedDailyResult {
 
 /** How many recent grids count toward the club cooldown. */
 const COOLDOWN_GRIDS = 10;
-/** A club used this many times in the cooldown window sits out today. */
-const MAX_CLUB_USES = 3;
+/** A club used this many times in the cooldown window sits out today.
+ * Set above the weighted average (~2.9 uses/window for active clubs) so it
+ * only catches pathological streaks without fighting clubWeights. */
+const MAX_CLUB_USES = 5;
+
+/**
+ * Defunct clubs appear far less often than active ones (~7% of grids vs ~28%
+ * for active clubs). Weight relative to the default of 1.
+ */
+export const CLUB_WEIGHTS: Record<string, number> = {
+  "Gold Coast United": 0.13,
+  "North Queensland Fury": 0.1,
+  "New Zealand Knights": 0.2,
+};
 
 /** Order-independent signature of a stored grid, matching the generator's. */
 function signatureFromStoredGrid(g: {
@@ -75,6 +87,7 @@ export async function generateDailyGrid(
     exclude,
     minDiffCriteria: 2,
     excludeClubs: cooledOutClubs(recent ?? []),
+    clubWeights: CLUB_WEIGHTS,
   });
 
   const row = {
