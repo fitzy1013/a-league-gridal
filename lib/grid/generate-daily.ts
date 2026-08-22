@@ -22,10 +22,37 @@ const MAX_CLUB_USES = 5;
  * for active clubs). Weight relative to the default of 1.
  */
 export const CLUB_WEIGHTS: Record<string, number> = {
-  "Gold Coast United": 0.13,
-  "North Queensland Fury": 0.1,
+  "Gold Coast United": 0.17,
+  "North Queensland Fury": 0.14,
   "New Zealand Knights": 0.2,
 };
+
+/**
+ * A defunct club that appeared within this many most-recent grids sits out,
+ * so the same rare club can never show up on consecutive days.
+ */
+const RARE_SPACING_GRIDS = 3;
+
+/** Rare clubs seen in the most recent grids (spacing rule). */
+function spacedOutClubs(recent: {
+  row_type: string;
+  col_type: string;
+  row_values: string[];
+  col_values: string[];
+}[]): string[] {
+  const seen = new Set<string>();
+  for (const g of recent.slice(0, RARE_SPACING_GRIDS)) {
+    const rt = JSON.parse(g.row_type) as Category[];
+    const ct = JSON.parse(g.col_type) as Category[];
+    rt.forEach((cat, i) => {
+      if (cat === "club") seen.add(g.row_values[i]);
+    });
+    ct.forEach((cat, i) => {
+      if (cat === "club") seen.add(g.col_values[i]);
+    });
+  }
+  return Object.keys(CLUB_WEIGHTS).filter((name) => seen.has(name));
+}
 
 /** Order-independent signature of a stored grid, matching the generator's. */
 function signatureFromStoredGrid(g: {
@@ -83,10 +110,14 @@ export async function generateDailyGrid(
     .limit(14);
 
   const exclude = (recent ?? []).map(signatureFromStoredGrid);
+  const excludedClubs = [
+    ...cooledOutClubs(recent ?? []),
+    ...spacedOutClubs(recent ?? []),
+  ];
   const grid = generateGrid(resolvedDataset, {
     exclude,
     minDiffCriteria: 2,
-    excludeClubs: cooledOutClubs(recent ?? []),
+    excludeClubs: excludedClubs,
     clubWeights: CLUB_WEIGHTS,
   });
 

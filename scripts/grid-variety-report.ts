@@ -10,6 +10,7 @@ const RUNS = 200;
 const WINDOW = 14; // matches generateDailyGrid's exclusion window
 const COOLDOWN_GRIDS = 10; // matches generateDailyGrid
 const MAX_CLUB_USES = 5; // matches generateDailyGrid
+const RARE_SPACING_GRIDS = 3; // matches generateDailyGrid
 
 function cooledOut(window: string[][]): string[] {
   const uses = new Map<string, number>();
@@ -24,6 +25,19 @@ function cooledOut(window: string[][]): string[] {
   return [...uses]
     .filter(([, n]) => n >= MAX_CLUB_USES)
     .map(([crit]) => crit.slice("club:".length));
+}
+
+/** Rare clubs present in the most recent grids must sit out (spacing rule). */
+function spacedOut(window: string[][]): string[] {
+  const seen = new Set<string>();
+  for (const sig of window.slice(-RARE_SPACING_GRIDS)) {
+    for (const crit of sig) {
+      if (crit.startsWith("club:") && CLUB_WEIGHTS[crit.slice(5)] != null) {
+        seen.add(crit.slice(5));
+      }
+    }
+  }
+  return [...seen];
 }
 
 function storedSig(g: {
@@ -51,6 +65,7 @@ async function main() {
 
   const slotCounts = new Map<string, number>();
   const gridCounts = new Map<string, number>();
+  const rareSeenAt = new Map<string, number[]>();
   let failures = 0;
 
   for (let i = 0; i < RUNS; i++) {
@@ -59,7 +74,7 @@ async function main() {
       grid = generateGrid(dataset, {
         exclude: window.map((s) => s.join("|")),
         minDiffCriteria: 2,
-        excludeClubs: cooledOut(window),
+        excludeClubs: [...cooledOut(window), ...spacedOut(window)],
         clubWeights: CLUB_WEIGHTS,
       });
     } catch {
@@ -72,8 +87,24 @@ async function main() {
     ];
     for (const c of crits) slotCounts.set(c, (slotCounts.get(c) ?? 0) + 1);
     for (const c of new Set(crits)) gridCounts.set(c, (gridCounts.get(c) ?? 0) + 1);
+    for (const crit of crits) {
+      if (crit.startsWith("club:") && CLUB_WEIGHTS[crit.slice(5)] != null) {
+        const name = crit.slice(5);
+        const list = rareSeenAt.get(name) ?? [];
+        list.push(i);
+        rareSeenAt.set(name, list);
+      }
+    }
     window.push(crits.sort());
     if (window.length > WINDOW) window.shift();
+  }
+
+  console.log("== rare-club spacing (grids between appearances) ==");
+  for (const [name, idxs] of rareSeenAt) {
+    const gaps = idxs.slice(1).map((v, k) => v - idxs[k]);
+    console.log(
+      `${name.padEnd(26)} min ${Math.min(...gaps, RARE_SPACING_GRIDS + 1)}  avg ${(idxs.length ? (RUNS / idxs.length) : 0).toFixed(1)}  appearances ${idxs.length}`,
+    );
   }
 
   const totalSlots = (RUNS - failures) * 6;
