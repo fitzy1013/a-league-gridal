@@ -9,7 +9,6 @@ export default function PlayLayout({ children }: { children: React.ReactNode }) 
             A-League Grid
           </Link>
           <Link href="/play/daily">Daily</Link>
-          <Link href="/play/unlimited">Unlimited</Link>
         </div>
       </nav>
       <div className="flex w-full max-w-5xl flex-1 flex-col p-5">{children}</div>
