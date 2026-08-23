@@ -1,10 +1,11 @@
 "use client";
 
-import { Fragment, useCallback, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CATEGORY_LABELS } from "@/lib/grid/labels";
 import type { Category } from "@/lib/grid/types";
 import { Button } from "@/components/ui/button";
 import { recordResult } from "@/app/play/daily/actions";
+import { loadProgress, pruneOldProgress, saveProgress } from "./progress";
 import Cell from "./Cell";
 import GuessInput from "./GuessInput";
 import ResultModal from "./ResultModal";
@@ -49,7 +50,26 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
   const [counts, setCounts] = useState<CellAnswerCount[] | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const recordedRef = useRef(false);
+
+  // Restore saved progress after mount (client-only, SSR-safe).
+  useEffect(() => {
+    pruneOldProgress();
+    const stored = loadProgress(spec, size);
+    if (stored) {
+      setCells(stored.cells);
+      setFinished(stored.finished);
+    }
+    setHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist progress on every change (daily grids only).
+  useEffect(() => {
+    if (!hydrated) return;
+    saveProgress(spec, cells, finished);
+  }, [hydrated, spec, cells, finished]);
 
   const correct = useMemo(
     () => cells.flat().filter((c) => c.status === "correct").length,
