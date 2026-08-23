@@ -19,6 +19,12 @@ export interface PlayerRow {
 export interface PlayerClubRow {
   player_id: number;
   club_id: number;
+  appearances: number | null;
+  goals: number | null;
+  yellow_cards: number | null;
+  red_cards: number | null;
+  wins: number | null;
+  debut_age: number | null;
 }
 
 export interface SeasonStatRow {
@@ -96,9 +102,33 @@ export async function loadPlayers(client: SupabaseClient): Promise<PlayerRow[]> 
 }
 
 export async function loadPlayerClubs(client: SupabaseClient): Promise<PlayerClubRow[]> {
-  return fetchAllRows<PlayerClubRow>((from, to) =>
-    client.from("player_clubs").select("player_id,club_id").range(from, to),
+  // Prefer per-club stat columns; fall back gracefully when the
+  // 0004_per_club_stats migration hasn't been applied yet.
+  const withStats = await fetchPage("player_id,club_id,appearances,goals,yellow_cards,red_cards,wins,debut_age");
+  if (withStats) return withStats;
+  return (
+    (await fetchPage("player_id,club_id,wins,debut_age"))?.map((r) => ({
+      ...(r as PlayerClubRow),
+      appearances: null,
+      goals: null,
+      yellow_cards: null,
+      red_cards: null,
+    })) ?? []
   );
+
+  async function fetchPage(columns: string): Promise<PlayerClubRow[] | null> {
+    try {
+      return await fetchAllRows<PlayerClubRow>((from, to) =>
+        client
+          .from("player_clubs")
+          .select(columns)
+          .range(from, to) as unknown as PromiseLike<PageResult<PlayerClubRow>>,
+      );
+    } catch (e) {
+      if (/appearances/.test(e instanceof Error ? e.message : "")) return null;
+      throw e;
+    }
+  }
 }
 
 export async function loadAllTimeStats(client: SupabaseClient): Promise<SeasonStatRow[]> {

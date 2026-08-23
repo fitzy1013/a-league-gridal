@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 export default function PlayLayout({ children }: { children: React.ReactNode }) {
+  const isDev = process.env.NODE_ENV === "development";
+
   return (
     <main className="flex min-h-screen flex-col items-center">
       <nav className="flex h-16 w-full items-center justify-between border-b border-foreground/10 px-5">
@@ -9,6 +11,7 @@ export default function PlayLayout({ children }: { children: React.ReactNode }) 
             A-League Grid
           </Link>
           <Link href="/play/daily">Daily</Link>
+          {isDev && <Link href="/play/unlimited">Unlimited</Link>}
         </div>
       </nav>
       <div className="flex w-full max-w-5xl flex-1 flex-col p-5">{children}</div>

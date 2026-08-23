@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGrid } from "@/lib/db/queries";
-import { playerSatisfiesCriterion } from "@/lib/grid/validate";
-import type { Category } from "@/lib/grid/types";
+import { playerSatisfiesClubStatCell, playerSatisfiesCriterion } from "@/lib/grid/validate";
+import { isPairAwareCategory, type BandedCategory, type Category } from "@/lib/grid/types";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -65,10 +65,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "cell out of range" }, { status: 400 });
   }
 
-  const [rowOk, colOk] = await Promise.all([
-    playerSatisfiesCriterion(supabase, playerId!, rTypes[rowIdx!], rValues[rowIdx!]),
-    playerSatisfiesCriterion(supabase, playerId!, cTypes[colIdx!], cValues[colIdx!]),
-  ]);
+  // Club x pair-aware-stat cells are checked jointly: the stat band must be
+  // met with the stats recorded at that club, not career-wide. Every other
+  // combination is two independent axis checks.
+  const rowType = rTypes[rowIdx!];
+  const colType = cTypes[colIdx!];
+  let correct: boolean;
+  if (rowType === "club" && isPairAwareCategory(colType)) {
+    correct = await playerSatisfiesClubStatCell(
+      supabase,
+      playerId!,
+      rValues[rowIdx!],
+      colType as BandedCategory,
+      cValues[colIdx!],
+    );
+  } else if (colType === "club" && isPairAwareCategory(rowType)) {
+    correct = await playerSatisfiesClubStatCell(
+      supabase,
+      playerId!,
+      cValues[colIdx!],
+      rowType as BandedCategory,
+      rValues[rowIdx!],
+    );
+  } else {
+    const [rowOk, colOk] = await Promise.all([
+      playerSatisfiesCriterion(supabase, playerId!, rowType, rValues[rowIdx!]),
+      playerSatisfiesCriterion(supabase, playerId!, colType, cValues[colIdx!]),
+    ]);
+    correct = rowOk && colOk;
+  }
 
-  return NextResponse.json({ correct: rowOk && colOk });
+  return NextResponse.json({ correct });
 }

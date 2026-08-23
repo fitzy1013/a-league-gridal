@@ -63,6 +63,11 @@ export interface ParsedClubMembership {
   nationality?: string;
   nationalityFlagUrl?: string;
   clubAppearances?: number;
+  clubGoals?: number;
+  clubYellowCards?: number;
+  clubRedCards?: number;
+  wins?: number;
+  debutAge?: number;
 }
 
 export type StatType = "pa" | "pg" | "pb" | "pc";

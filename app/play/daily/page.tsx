@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import GameGrid from "@/app/components/grid/GameGrid";
 import { getTodayGrid } from "@/lib/db/queries";
 import type { Category, CellSolution } from "@/lib/grid/types";
@@ -23,6 +25,11 @@ export default async function DailyPage() {
           The daily grid for {today} hasn&apos;t been generated. The scheduled generator runs at
           04:00 AEST.
         </p>
+        {process.env.NODE_ENV === "development" && (
+          <Button asChild>
+            <Link href="/play/unlimited">Play Unlimited</Link>
+          </Button>
+        )}
       </div>
     );
   }

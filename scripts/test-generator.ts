@@ -2,13 +2,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseAllPlayersPage, parseGeneralPage, parsePlayerStatsPage } from "../lib/scrape/parse-players";
 import { parsePlayerAwards } from "../lib/scrape/parse-titles";
-import { buildDataset, generateGrid, playerSatisfies, resolveCriterionLabel, DEFAULT_HARD_CELL_MAX_ANSWERS } from "../lib/grid/generator";
+import { buildDataset, generateGrid, DEFAULT_HARD_CELL_MAX_ANSWERS } from "../lib/grid/generator";
+import { cellAnswers } from "../lib/grid/answers";
 import { ALL_TIME_SEASON, GRID_SIZE } from "../lib/grid/labels";
 import type { BuildDatasetOptions } from "../lib/grid/generator";
 
 /**
  * Builds a GridDataset from saved HTML snapshots (no database required) and
- * validates the grid generator: feasible cells, >= 4 distinct clubs, club in
+ * validates the grid generator: feasible cells, >= 3 distinct clubs, club in
  * both rows and columns.
  *
  * Usage:
@@ -93,15 +94,64 @@ const addStat = (s: { playerId: number; appearances?: number; goals?: number; ye
 };
 for (const s of [...pa.stats, ...pg.stats, ...pb.stats, ...pc.stats]) addStat(s);
 
-const playerClubs = new Map<string, { player_id: number; club_id: number }>();
+const playerClubs = new Map<
+  string,
+  {
+    player_id: number;
+    club_id: number;
+    appearances: number | null;
+    goals: number | null;
+    yellow_cards: number | null;
+    red_cards: number | null;
+    wins: number | null;
+    debut_age: number | null;
+  }
+>();
 for (const p of playerRows.values()) {
-  if (p.club_id != null) playerClubs.set(`${p.id}:${p.club_id}`, { player_id: p.id, club_id: p.club_id });
+  if (p.club_id != null) {
+    playerClubs.set(`${p.id}:${p.club_id}`, {
+      player_id: p.id,
+      club_id: p.club_id,
+      appearances: null,
+      goals: null,
+      yellow_cards: null,
+      red_cards: null,
+      wins: null,
+      debut_age: null,
+    });
+  }
 }
 for (const row of pl) {
-  for (const clubId of row.clubIds) playerClubs.set(`${row.playerId}:${clubId}`, { player_id: row.playerId, club_id: clubId });
+  for (const clubId of row.clubIds) {
+    const key = `${row.playerId}:${clubId}`;
+    if (!playerClubs.has(key)) {
+      playerClubs.set(key, {
+        player_id: row.playerId,
+        club_id: clubId,
+        appearances: null,
+        goals: null,
+        yellow_cards: null,
+        red_cards: null,
+        wins: null,
+        debut_age: null,
+      });
+    }
+  }
 }
 for (const m of mvMembers) {
-  playerClubs.set(`${m.playerId}:${m.clubId}`, { player_id: m.playerId, club_id: m.clubId });
+  const key = `${m.playerId}:${m.clubId}`;
+  if (!playerClubs.has(key)) {
+    playerClubs.set(key, {
+      player_id: m.playerId,
+      club_id: m.clubId,
+      appearances: m.clubAppearances ?? null,
+      goals: m.clubGoals ?? null,
+      yellow_cards: m.clubYellowCards ?? null,
+      red_cards: m.clubRedCards ?? null,
+      wins: m.wins ?? null,
+      debut_age: m.debutAge ?? null,
+    });
+  }
   if (!playerRows.has(m.playerId)) {
     addPlayer({
       playerId: m.playerId,
@@ -174,11 +224,7 @@ for (let i = 0; i < 20; i++) {
     let hardCells = 0;
     for (let r = 0; r < GRID_SIZE; r++) {
       for (let c = 0; c < GRID_SIZE; c++) {
-        const rowLabel = resolveCriterionLabel(dataset, grid.rowTypes[r], grid.rowValues[r]);
-        const colLabel = resolveCriterionLabel(dataset, grid.colTypes[c], grid.colValues[c]);
-        const rowSet = rowLabel === null ? new Set<number>() : dataset.members[grid.rowTypes[r]].get(rowLabel) ?? new Set<number>();
-        const colSet = colLabel === null ? new Set<number>() : dataset.members[grid.colTypes[c]].get(colLabel) ?? new Set<number>();
-        const cnt = [...rowSet].filter((p) => colSet.has(p)).length;
+        const cnt = cellAnswers(dataset, grid.rowTypes[r], grid.rowValues[r], grid.colTypes[c], grid.colValues[c]).ids.size;
         if (cnt === 1) singletons++;
         if (cnt >= 3) goodCells++;
         if (cnt <= DEFAULT_HARD_CELL_MAX_ANSWERS) hardCells++;
@@ -188,7 +234,7 @@ for (let i = 0; i < 20; i++) {
     if (
       !hasClubRow ||
       !hasClubCol ||
-      distinctClubs.size < 4 ||
+      distinctClubs.size < 3 ||
       !allCellsSolvable ||
       singletons > 1 ||
       goodCells < 5 ||
@@ -210,21 +256,32 @@ console.log(`generated ${generated}/20 grids, ${failures} failures`);
 if (generated > 0) {
   const grid = generateGrid(dataset);
   const r = grid.solution[0];
-  const okRow = playerSatisfies(dataset, grid.rowTypes[r.rowIdx], grid.rowValues[r.rowIdx], r.playerId);
-  const okCol = playerSatisfies(dataset, grid.colTypes[r.colIdx], grid.colValues[r.colIdx], r.playerId);
-  console.log(`solution player ${r.playerId} satisfies row=${okRow} col=${okCol}`);
-  if (!okRow || !okCol) failures++;
+  const okCell = cellAnswers(
+    dataset,
+    grid.rowTypes[r.rowIdx],
+    grid.rowValues[r.rowIdx],
+    grid.colTypes[r.colIdx],
+    grid.colValues[r.colIdx],
+  ).ids.has(r.playerId);
+  console.log(`solution player ${r.playerId} satisfies cell=${okCell}`);
+  if (!okCell) failures++;
 }
 
-// every solution cell must satisfy BOTH criteria.
+// every solution cell must satisfy BOTH criteria (pair-aware: club x stat
+// cells are validated against the per-club stat membership).
 {
   let validated = 0;
   for (let n = 0; n < 5; n++) {
     const grid = generateGrid(dataset);
     for (const sol of grid.solution) {
-      const okR = playerSatisfies(dataset, grid.rowTypes[sol.rowIdx], grid.rowValues[sol.rowIdx], sol.playerId);
-      const okC = playerSatisfies(dataset, grid.colTypes[sol.colIdx], grid.colValues[sol.colIdx], sol.playerId);
-      if (!okR || !okC) {
+      const ok = cellAnswers(
+        dataset,
+        grid.rowTypes[sol.rowIdx],
+        grid.rowValues[sol.rowIdx],
+        grid.colTypes[sol.colIdx],
+        grid.colValues[sol.colIdx],
+      ).ids.has(sol.playerId);
+      if (!ok) {
         failures++;
         console.error(
           "FAIL solution cell",

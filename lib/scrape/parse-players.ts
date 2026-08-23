@@ -190,6 +190,11 @@ export function parseAllPlayersPage(
       nationality,
       nationalityFlagUrl,
       clubAppearances: parseIntCell($(tds[4]).text()),
+      clubGoals: parseIntCell($(tds[5]).text()),
+      clubYellowCards: parseIntCell($(tds[6]).text()),
+      clubRedCards: parseIntCell($(tds[7]).text()),
+      wins: parseIntCell($(tds[8]).text()),
+      debutAge: parseIntCell($(tds[10]).text()),
     });
   });
 

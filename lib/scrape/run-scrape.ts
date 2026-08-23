@@ -87,12 +87,33 @@ export async function runScrape(): Promise<ScrapeResult> {
 
   // 5. Club All Players pages: complete all-time membership --------------------
   let membershipCount = 0;
-  const membership = new Map<string, { player_id: number; club_id: number }>();
+  const membership = new Map<
+    string,
+    {
+      player_id: number;
+      club_id: number;
+      appearances: number | null;
+      goals: number | null;
+      yellow_cards: number | null;
+      red_cards: number | null;
+      wins: number | null;
+      debut_age: number | null;
+    }
+  >();
   for (const club of CLUBS) {
     const html = await fetchHtml(clubAllPlayersUrl(club.id));
     for (const m of parseAllPlayersPage(html, club.id, club.name)) {
       membershipCount++;
-      membership.set(`${m.playerId}:${m.clubId}`, { player_id: m.playerId, club_id: m.clubId });
+      membership.set(`${m.playerId}:${m.clubId}`, {
+        player_id: m.playerId,
+        club_id: m.clubId,
+        appearances: m.clubAppearances ?? null,
+        goals: m.clubGoals ?? null,
+        yellow_cards: m.clubYellowCards ?? null,
+        red_cards: m.clubRedCards ?? null,
+        wins: m.wins ?? null,
+        debut_age: m.debutAge ?? null,
+      });
       const existing = playerMap.get(m.playerId);
       if (!existing) {
         playerMap.set(m.playerId, {
@@ -145,13 +166,37 @@ export async function runScrape(): Promise<ScrapeResult> {
 
   // player_clubs: full all-time membership from each club's All Players page,
   // plus multi-club history from the General tab.
-  const clubRows = new Map<string, { player_id: number; club_id: number }>();
+  const clubRows = new Map<
+    string,
+    {
+      player_id: number;
+      club_id: number;
+      appearances: number | null;
+      goals: number | null;
+      yellow_cards: number | null;
+      red_cards: number | null;
+      wins: number | null;
+      debut_age: number | null;
+    }
+  >();
   for (const [key, row] of membership) {
     clubRows.set(key, row);
   }
   for (const pc of general) {
     for (const clubId of pc.clubIds) {
-      clubRows.set(`${pc.playerId}:${clubId}`, { player_id: pc.playerId, club_id: clubId });
+      const key = `${pc.playerId}:${clubId}`;
+      if (!clubRows.has(key)) {
+        clubRows.set(key, {
+          player_id: pc.playerId,
+          club_id: clubId,
+          appearances: null,
+          goals: null,
+          yellow_cards: null,
+          red_cards: null,
+          wins: null,
+          debut_age: null,
+        });
+      }
     }
   }
   const { error: delErr } = await supabase.from("player_clubs").delete().neq("player_id", 0);

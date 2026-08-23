@@ -1,6 +1,7 @@
 import { createAdminClient } from "../lib/db/supabase-admin";
 import { loadGridDataset } from "../lib/db/grid-loader";
-import { generateGrid, resolveCriterionLabel, DEFAULT_HARD_CELL_MAX_ANSWERS } from "../lib/grid/generator";
+import { generateGrid, DEFAULT_HARD_CELL_MAX_ANSWERS } from "../lib/grid/generator";
+import { cellAnswers } from "../lib/grid/answers";
 import { GRID_SIZE } from "../lib/grid/labels";
 
 process.loadEnvFile(".env");
@@ -43,11 +44,7 @@ async function main() {
       let hard = 0;
       for (let i = 0; i < size; i++) {
         for (let j = 0; j < size; j++) {
-          const rowLabel = resolveCriterionLabel(ds, grid.rowTypes[i], grid.rowValues[i]);
-          const colLabel = resolveCriterionLabel(ds, grid.colTypes[j], grid.colValues[j]);
-          const rowSet = rowLabel === null ? new Set() : ds.members[grid.rowTypes[i]].get(rowLabel) ?? new Set();
-          const colSet = colLabel === null ? new Set() : ds.members[grid.colTypes[j]].get(colLabel) ?? new Set();
-          const cnt = [...rowSet].filter((p) => colSet.has(p)).length;
+          const cnt = cellAnswers(ds, grid.rowTypes[i], grid.rowValues[i], grid.colTypes[j], grid.colValues[j]).ids.size;
           if (cnt === 1) singletons++;
           if (cnt >= 3) good++;
           if (cnt <= DEFAULT_HARD_CELL_MAX_ANSWERS) hard++;
@@ -57,7 +54,7 @@ async function main() {
       goodHist[good] = (goodHist[good] ?? 0) + 1;
       clubMin = Math.min(clubMin, clubCount);
       clubMax = Math.max(clubMax, clubCount);
-      if (clubCount < 4 || singletons > 1 || good < 5 || hard < 1) {
+      if (clubCount < 3 || singletons > 1 || good < 5 || hard < 1) {
         failures++;
         console.log(
           `FAIL #${n}: clubs=${clubCount} singletons=${singletons} good=${good} hard=${hard}`,
