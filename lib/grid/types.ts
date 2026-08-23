@@ -3,7 +3,7 @@ export type Category =
   | "appearances"
   | "goals"
   | "red_cards"
-  | "titles"
+  | "championships"
   | "minutes"
   | "clubs"
   | "yellow_cards"
@@ -20,7 +20,7 @@ export type BandedCategory = Extract<
   | "appearances"
   | "goals"
   | "red_cards"
-  | "titles"
+  | "championships"
   | "minutes"
   | "clubs"
   | "yellow_cards"
@@ -57,7 +57,7 @@ export const ALL_CATEGORIES: Category[] = [
   "appearances",
   "goals",
   "red_cards",
-  "titles",
+  "championships",
   "minutes",
   "clubs",
   "yellow_cards",

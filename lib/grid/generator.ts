@@ -53,8 +53,8 @@ export interface BuildDatasetOptions {
   playerClubs: PlayerClubRow[];
   /** player_season_stats rows where season = 'all' */
   stats: SeasonStatRow[];
-  /** player ids that hold at least one award/title */
-  titlePlayerIds: number[];
+  /** ids of clubs that have won at least one A-League Championship */
+  championClubIds: number[];
 }
 
 /**
@@ -67,7 +67,7 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     appearances: new Map(),
     goals: new Map(),
     red_cards: new Map(),
-    titles: new Map(),
+    championships: new Map(),
     minutes: new Map(),
     clubs: new Map(),
     yellow_cards: new Map(),
@@ -105,15 +105,19 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     addToMembers("club", String(pc.club_id), pc.player_id);
   }
 
-  const titleCount = new Map<number, number>();
-  for (const id of opts.titlePlayerIds) {
-    titleCount.set(id, (titleCount.get(id) ?? 0) + 1);
-  }
-
   // Distinct clubs represented per player (one player_clubs row per club).
   const clubCounts = new Map<number, number>();
   for (const pc of opts.playerClubs) {
     clubCounts.set(pc.player_id, (clubCounts.get(pc.player_id) ?? 0) + 1);
+  }
+
+  // Championships: distinct Championship-winning clubs among the player's
+  // all-time clubs (player-level ring counts aren't published by UAL).
+  const championClubSet = new Set(opts.championClubIds);
+  const championClubCounts = new Map<number, number>();
+  for (const pc of opts.playerClubs) {
+    if (!championClubSet.has(pc.club_id)) continue;
+    championClubCounts.set(pc.player_id, (championClubCounts.get(pc.player_id) ?? 0) + 1);
   }
 
   // Players join EVERY band their value falls into (e.g. a player with 220
@@ -132,7 +136,11 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     addToBands("appearances", s.appearances ?? 0, s.player_id);
     addToBands("goals", s.goals ?? 0, s.player_id);
     addToBands("red_cards", s.red_cards ?? 0, s.player_id);
-    addToBands("titles", titleCount.get(s.player_id) ?? 0, s.player_id);
+    addToBands(
+      "championships",
+      championClubCounts.get(s.player_id) ?? 0,
+      s.player_id,
+    );
     addToBands("minutes", s.minutes ?? 0, s.player_id);
     addToBands("yellow_cards", s.yellow_cards ?? 0, s.player_id);
     addToBands("clean_sheets", s.clean_sheets ?? 0, s.player_id);
@@ -393,7 +401,7 @@ const NON_CLUB_CATEGORIES: Category[] = [
   "appearances",
   "goals",
   "red_cards",
-  "titles",
+  "championships",
   "minutes",
   "clubs",
   "yellow_cards",

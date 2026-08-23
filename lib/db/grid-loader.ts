@@ -3,10 +3,10 @@ import { buildDataset, type GridDataset } from "../grid/generator";
 import {
   getGrid,
   loadAllTimeStats,
+  loadChampionClubIds,
   loadClubs,
   loadPlayerClubs,
   loadPlayers,
-  loadPlayerTitleCounts,
   type GridRow,
 } from "./queries";
 
@@ -18,12 +18,12 @@ export type { GridRow };
  * Used by the scheduled/on-demand API routes (service-role client).
  */
 export async function loadGridDataset(client: SupabaseClient): Promise<GridDataset> {
-  const [clubs, players, playerClubs, stats, titles] = await Promise.all([
+  const [clubs, players, playerClubs, stats, championClubIds] = await Promise.all([
     loadClubs(client),
     loadPlayers(client),
     loadPlayerClubs(client),
     loadAllTimeStats(client),
-    loadPlayerTitleCounts(client),
+    loadChampionClubIds(client),
   ]);
 
   return buildDataset({
@@ -31,6 +31,6 @@ export async function loadGridDataset(client: SupabaseClient): Promise<GridDatas
     players,
     playerClubs,
     stats,
-    titlePlayerIds: titles.map((t) => t.player_id),
+    championClubIds,
   });
 }

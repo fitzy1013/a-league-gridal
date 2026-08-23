@@ -60,14 +60,24 @@ export async function playerSatisfiesCriterion(
         .maybeSingle();
       return club?.name === displayLabel;
     }
-    case "titles": {
-      const band = bandForLabel("titles", displayLabel);
+    case "championships": {
+      const band = bandForLabel("championships", displayLabel);
       if (!band) return false;
-      const { count } = await db
-        .from("player_titles")
-        .select("player_id", { count: "exact", head: true })
+      // Distinct Championship-winning clubs among the player's all-time clubs
+      // (same definition as buildDataset).
+      const { data: playerClubs } = await db
+        .from("player_clubs")
+        .select("club_id")
         .eq("player_id", playerId);
-      return count != null && count >= band.min && count <= band.max;
+      const clubIds = [...new Set((playerClubs ?? []).map((r) => r.club_id))];
+      if (clubIds.length === 0) return false;
+      const { count } = await db
+        .from("club_titles")
+        .select("club_id", { count: "exact", head: true })
+        .eq("title", "Championship")
+        .in("club_id", clubIds);
+      const championClubs = count ?? 0;
+      return championClubs >= band.min && championClubs <= band.max;
     }
     case "clubs": {
       const band = bandForLabel("clubs", displayLabel);

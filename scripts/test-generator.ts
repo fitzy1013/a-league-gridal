@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseAllPlayersPage, parseGeneralPage, parsePlayerStatsPage } from "../lib/scrape/parse-players";
-import { parsePlayerAwards } from "../lib/scrape/parse-titles";
 import { buildDataset, generateGrid, DEFAULT_HARD_CELL_MAX_ANSWERS } from "../lib/grid/generator";
 import { cellAnswers } from "../lib/grid/answers";
 import { ALL_TIME_SEASON, GRID_SIZE } from "../lib/grid/labels";
@@ -28,7 +27,6 @@ const pg = parsePlayerStatsPage(read("players_pg_all.html"), "pg", "all");
 const pb = parsePlayerStatsPage(read("players_pb_all.html"), "pb", "all");
 const pc = parsePlayerStatsPage(read("players_pc_all.html"), "pc", "all");
 const pl = parseGeneralPage(read("players_pl_all.html"));
-const titles = parsePlayerAwards(read("achievements_pa.html"));
 
 // Club All Players pages: complete per-club membership (incl. players who
 // moved clubs). club_3.html is Melbourne Victory.
@@ -170,7 +168,9 @@ const opts: BuildDatasetOptions = {
   players: [...playerRows.values()],
   playerClubs: [...playerClubs.values()],
   stats: [...stats.values()],
-  titlePlayerIds: titles.map((t) => t.playerId),
+  // Snapshot set has no per-club trophy cabinets, so championship criteria
+  // can't be exercised from HTML fixtures.
+  championClubIds: [],
 };
 
 const dataset = buildDataset(opts);

@@ -23,7 +23,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   appearances: "Appearances",
   goals: "Goals",
   red_cards: "Red Cards",
-  titles: "Titles",
+  championships: "Championships",
   minutes: "Minutes",
   clubs: "Clubs",
   yellow_cards: "Yellow Cards",
@@ -76,10 +76,9 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
     { label: "2+", min: 2, max: Infinity },
     { label: "3+", min: 3, max: Infinity },
   ],
-  titles: [
+  championships: [
     { label: "1+", min: 1, max: Infinity },
     { label: "2+", min: 2, max: Infinity },
-    { label: "3+", min: 3, max: Infinity },
   ],
   minutes: [
     { label: "Under 1000", min: 0, max: 999 },
@@ -98,7 +97,8 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
     { label: "25+", min: 25, max: Infinity },
   ],
   clean_sheets: [
-    { label: "1+", min: 1, max: Infinity },
+    { label: "Under 10", min: 0, max: 9 },
+    { label: "10+", min: 10, max: Infinity },
     { label: "20+", min: 20, max: Infinity },
     { label: "50+", min: 50, max: Infinity },
   ],

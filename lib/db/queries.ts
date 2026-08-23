@@ -147,6 +147,16 @@ export async function loadPlayerTitleCounts(client: SupabaseClient): Promise<Pla
   );
 }
 
+/** Ids of clubs that have won at least one A-League Championship. */
+export async function loadChampionClubIds(client: SupabaseClient): Promise<number[]> {
+  const { data, error } = await client
+    .from("club_titles")
+    .select("club_id")
+    .eq("title", "Championship");
+  if (error) throw new Error(`load champion clubs: ${error.message}`);
+  return [...new Set((data ?? []).map((r) => r.club_id))];
+}
+
 export async function getTodayGrid(
   client: SupabaseClient,
   date: string,
