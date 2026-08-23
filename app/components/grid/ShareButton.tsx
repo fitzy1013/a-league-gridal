@@ -40,7 +40,8 @@ export default function ShareButton({
         ? `A-League Grid — Daily ${date ?? ""}`
         : "A-League Grid — Unlimited";
     const grid = rows.map((row) => row.map((cell) => emojiFor(cell.status)).join("")).join("\n");
-    return `${title}\n${grid}\n\nScore: ${correct}/${total}\n${SHARE_LINKS[mode]}`;
+    // Angle brackets stop Discord from unfurling the link into an embed card.
+    return `${title}\n${grid}\n\nScore: ${correct}/${total}\n<${SHARE_LINKS[mode]}>`;
   }, [rows, mode, date, correct, total]);
 
   const copy = async () => {
