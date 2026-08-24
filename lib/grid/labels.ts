@@ -32,7 +32,9 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   win_pct: "Win %",
   nationality: "Nationality",
   position: "Position",
-  current_club: "Current Club",
+  own_goals: "Own Goals",
+  finals_goals: "Finals Goals",
+  finals_apps: "Finals Apps",
 };
 
 /**
@@ -125,6 +127,18 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
     { label: "45%+", min: 45, max: Infinity },
     { label: "Under 35%", min: 0, max: 34.999999 },
     { label: "Under 45%", min: 0, max: 44.999999 },
+  ],
+  own_goals: [
+    { label: "1+", min: 1, max: Infinity },
+    { label: "2+", min: 2, max: Infinity },
+  ],
+  finals_goals: [
+    { label: "1+", min: 1, max: Infinity },
+    { label: "2+", min: 2, max: Infinity },
+  ],
+  finals_apps: [
+    { label: "5+", min: 5, max: Infinity },
+    { label: "10+", min: 10, max: Infinity },
   ],
 };
 

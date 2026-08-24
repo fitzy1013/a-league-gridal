@@ -46,7 +46,7 @@ if (fs.existsSync(path.join(dir, "club_3_allplayers.html"))) {
 // Merge into the same shapes the scraper would write to the database.
 const playerRows = new Map<number, { id: number; name: string; position: string | null; club_id: number | null; nationality: string | null; nationality_flag_url: string | null }>();
 const clubs = new Map<number, { id: number; name: string; short_name: string; logo_url: string | null }>();
-const stats = new Map<string, { player_id: number; appearances: number | null; goals: number | null; yellow_cards: number | null; red_cards: number | null; clean_sheets: number | null; minutes: number | null }>();
+const stats = new Map<string, { player_id: number; appearances: number | null; goals: number | null; yellow_cards: number | null; red_cards: number | null; clean_sheets: number | null; minutes: number | null; finals_appearances: number | null; finals_goals: number | null; own_goals: number | null; }>();
 
 const addPlayer = (p: {
   playerId: number;
@@ -81,7 +81,7 @@ for (const p of [...pa.players, ...pg.players, ...pb.players, ...pc.players]) ad
 
 const addStat = (s: { playerId: number; appearances?: number; goals?: number; yellowCards?: number; redCards?: number; cleanSheets?: number; minutes?: number }) => {
   const key = `${s.playerId}:${ALL_TIME_SEASON}`;
-  const existing = stats.get(key) ?? { player_id: s.playerId, appearances: null, goals: null, yellow_cards: null, red_cards: null, clean_sheets: null, minutes: null };
+  const existing = stats.get(key) ?? { player_id: s.playerId, appearances: null, goals: null, yellow_cards: null, red_cards: null, clean_sheets: null, minutes: null, finals_appearances: null, finals_goals: null, own_goals: null };
   existing.appearances ??= s.appearances ?? null;
   existing.goals ??= s.goals ?? null;
   existing.yellow_cards ??= s.yellowCards ?? null;

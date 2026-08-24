@@ -35,6 +35,9 @@ export interface SeasonStatRow {
   red_cards: number | null;
   clean_sheets: number | null;
   minutes: number | null;
+  finals_appearances: number | null;
+  finals_goals: number | null;
+  own_goals: number | null;
 }
 
 export interface PlayerTitleRow {
@@ -132,13 +135,37 @@ export async function loadPlayerClubs(client: SupabaseClient): Promise<PlayerClu
 }
 
 export async function loadAllTimeStats(client: SupabaseClient): Promise<SeasonStatRow[]> {
-  return fetchAllRows<SeasonStatRow>((from, to) =>
-    client
-      .from("player_season_stats")
-      .select("player_id,appearances,goals,yellow_cards,red_cards,clean_sheets,minutes")
-      .eq("season", "all")
-      .range(from, to),
+  // Prefer finals/own-goal columns; fall back gracefully when the
+  // 0005_finals_own_goals migration hasn't been applied yet.
+  const withFinals = await fetchStatPage(
+    "player_id,appearances,goals,yellow_cards,red_cards,clean_sheets,minutes,finals_appearances,finals_goals,own_goals",
   );
+  if (withFinals) return withFinals;
+  const rows =
+    (await fetchStatPage(
+      "player_id,appearances,goals,yellow_cards,red_cards,clean_sheets,minutes",
+    )) ?? [];
+  return rows.map((r) => ({
+    ...r,
+    finals_appearances: null,
+    finals_goals: null,
+    own_goals: null,
+  }));
+
+  async function fetchStatPage(columns: string): Promise<SeasonStatRow[] | null> {
+    try {
+      return await fetchAllRows<SeasonStatRow>((from, to) =>
+        client
+          .from("player_season_stats")
+          .select(columns)
+          .eq("season", "all")
+          .range(from, to) as unknown as PromiseLike<PageResult<SeasonStatRow>>,
+      );
+    } catch (e) {
+      if (/finals_appearances/.test(e instanceof Error ? e.message : "")) return null;
+      throw e;
+    }
+  }
 }
 
 export async function loadPlayerTitleCounts(client: SupabaseClient): Promise<PlayerTitleRow[]> {

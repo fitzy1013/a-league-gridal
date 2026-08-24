@@ -24,6 +24,9 @@ export interface ParsedSeasonStats {
   redCards?: number;
   cleanSheets?: number;
   minutes?: number;
+  finalsAppearances?: number;
+  finalsGoals?: number;
+  ownGoals?: number;
 }
 
 export interface ParsedPlayerClubs {

@@ -1,5 +1,10 @@
 import { createAdminClient } from "../db/supabase-admin";
-import { parseAllPlayersPage, parseGeneralPage, parsePlayerStatsPage } from "./parse-players";
+import {
+  parseAllPlayersPage,
+  parseGeneralPage,
+  parsePlayerStatsPage,
+  parseSingleValueStats,
+} from "./parse-players";
 import { parseClubTitles, parsePlayerAwards } from "./parse-titles";
 import {
   achievementsUrl,
@@ -7,9 +12,10 @@ import {
   clubAllPlayersUrl,
   fetchHtml,
   generalStatsUrl,
-  parseSelectedSeason,
   playerAwardsUrl,
+  playerStatsShowUrl,
   playerStatsUrl,
+  parseSelectedSeason,
 } from "./ual";
 import type { ParsedPlayerRow, ParsedSeasonStats } from "./types";
 
@@ -80,6 +86,24 @@ export async function runScrape(): Promise<ScrapeResult> {
     }
   }
   log.push(`players: ${playerMap.size}, stats: ${statsMap.size}`);
+
+  // 3b. Single-value "Show" pages -> finals appearances / finals goals /
+  //     own goals, merged into the season='all' stat rows.
+  const applyShowStat = (key: string, page: string) => {
+    for (const { playerId, value } of parseSingleValueStats(page)) {
+      let existing = statsMap.get(`${playerId}:all`);
+      if (!existing) {
+        existing = { playerId, season: "all" };
+        statsMap.set(existing.playerId + ":all", existing);
+      }
+      if (key === "finalsAppearances") existing.finalsAppearances ??= value;
+      else if (key === "finalsGoals") existing.finalsGoals ??= value;
+      else existing.ownGoals ??= value;
+    }
+  };
+  applyShowStat("finalsAppearances", await fetchHtml(playerStatsShowUrl("pa", "fin")));
+  applyShowStat("finalsGoals", await fetchHtml(playerStatsShowUrl("pg", "fin")));
+  applyShowStat("ownGoals", await fetchHtml(playerStatsShowUrl("pg", "og")));
 
   // 4. General tab: multi-club history (all-time) ------------------------------
   const general = parseGeneralPage(await fetchHtml(generalStatsUrl("all")));
@@ -161,6 +185,9 @@ export async function runScrape(): Promise<ScrapeResult> {
     red_cards: s.redCards ?? null,
     clean_sheets: s.cleanSheets ?? null,
     minutes: s.minutes ?? null,
+    finals_appearances: s.finalsAppearances ?? null,
+    finals_goals: s.finalsGoals ?? null,
+    own_goals: s.ownGoals ?? null,
     updated_at: now,
   })), "player_id,season");
 

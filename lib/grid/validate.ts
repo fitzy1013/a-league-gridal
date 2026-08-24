@@ -46,20 +46,6 @@ export async function playerSatisfiesCriterion(
       if (!player) return false;
       return positionLabels(player.position).includes(displayLabel);
     }
-    case "current_club": {
-      const { data: player } = await db
-        .from("players")
-        .select("club_id")
-        .eq("id", playerId)
-        .maybeSingle();
-      if (!player?.club_id) return false;
-      const { data: club } = await db
-        .from("clubs")
-        .select("name")
-        .eq("id", player.club_id)
-        .maybeSingle();
-      return club?.name === displayLabel;
-    }
     case "championships": {
       const band = bandForLabel("championships", displayLabel);
       if (!band) return false;
@@ -130,12 +116,17 @@ export async function playerSatisfiesCriterion(
     case "red_cards":
     case "minutes":
     case "yellow_cards":
-    case "clean_sheets": {
+    case "clean_sheets":
+    case "own_goals":
+    case "finals_goals":
+    case "finals_apps": {
       const band = bandForLabel(category, displayLabel);
       if (!band) return false;
       const { data: stat } = await db
         .from("player_season_stats")
-        .select("appearances,goals,yellow_cards,red_cards,clean_sheets,minutes")
+        .select(
+          "appearances,goals,yellow_cards,red_cards,clean_sheets,minutes,own_goals,finals_goals,finals_appearances",
+        )
         .eq("player_id", playerId)
         .eq("season", "all")
         .maybeSingle();
@@ -153,7 +144,13 @@ export async function playerSatisfiesCriterion(
                 ? (stat.yellow_cards ?? 0)
                 : category === "clean_sheets"
                   ? (stat.clean_sheets ?? 0)
-                  : (stat.minutes ?? 0);
+                  : category === "own_goals"
+                    ? (stat.own_goals ?? 0)
+                    : category === "finals_goals"
+                      ? (stat.finals_goals ?? 0)
+                      : category === "finals_apps"
+                        ? (stat.finals_appearances ?? 0)
+                        : (stat.minutes ?? 0);
       return value >= band.min && value <= band.max;
     }
   }

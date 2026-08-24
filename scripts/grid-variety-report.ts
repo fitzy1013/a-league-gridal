@@ -1,12 +1,13 @@
 import { createAdminClient } from "../lib/db/supabase-admin";
 import { loadGridDataset } from "../lib/db/grid-loader";
 import { generateGrid } from "../lib/grid/generator";
+import { cellAnswers } from "../lib/grid/answers";
 import { CLUB_WEIGHTS } from "../lib/grid/generate-daily";
 import type { Category } from "../lib/grid/types";
 
 process.loadEnvFile(".env");
 
-const RUNS = 200;
+const RUNS = 400;
 const WINDOW = 14; // matches generateDailyGrid's exclusion window
 const COOLDOWN_GRIDS = 10; // matches generateDailyGrid
 const MAX_CLUB_USES = 5; // matches generateDailyGrid
@@ -66,15 +67,25 @@ async function main() {
   const slotCounts = new Map<string, number>();
   const gridCounts = new Map<string, number>();
   const rareSeenAt = new Map<string, number[]>();
+  const clubDist = new Map<number, number>();
+  const fatHist = new Map<number, number>();
   let failures = 0;
 
   for (let i = 0; i < RUNS; i++) {
     let grid;
     try {
+      // stat-criterion rotation: anything used in the recent window sits out
+      const banned = new Set<string>();
+      for (const sig of window) {
+        for (const crit of sig) {
+          if (!crit.startsWith("club:")) banned.add(crit);
+        }
+      }
       grid = generateGrid(dataset, {
         exclude: window.map((s) => s.join("|")),
         minDiffCriteria: 2,
         excludeClubs: [...cooledOut(window), ...spacedOut(window)],
+        excludeCriteria: [...banned],
         clubWeights: CLUB_WEIGHTS,
       });
     } catch {
@@ -95,6 +106,25 @@ async function main() {
         rareSeenAt.set(name, list);
       }
     }
+
+    // club-count + fat-cell tracking
+    const clubCrits = crits.filter((c) => c.startsWith("club:"));
+    clubDist.set(clubCrits.length, (clubDist.get(clubCrits.length) ?? 0) + 1);
+    let fatCells = 0;
+    for (let r = 0; r < grid.rowValues.length; r++) {
+      for (let c = 0; c < grid.colValues.length; c++) {
+        const n = cellAnswers(
+          dataset,
+          grid.rowTypes[r],
+          grid.rowValues[r],
+          grid.colTypes[c],
+          grid.colValues[c],
+        ).ids.size;
+        if (n > 50) fatCells++;
+      }
+    }
+    fatHist.set(fatCells, (fatHist.get(fatCells) ?? 0) + 1);
+
     window.push(crits.sort());
     if (window.length > WINDOW) window.shift();
   }
@@ -107,12 +137,22 @@ async function main() {
     );
   }
 
-  const totalSlots = (RUNS - failures) * 6;
+  const totalSlots = (RUNS - failures) * 9;
   const pct = (n: number, base: number) => `${((n / base) * 100).toFixed(1)}%`;
   const generated = RUNS - failures;
 
   console.log(`generated ${generated}/${RUNS} grids (${failures} failures), ${totalSlots} criterion slots`);
   console.log(`distinct criteria seen: ${slotCounts.size}`);
+
+  console.log("\n== club-count distribution ==");
+  for (const [n, count] of [...clubDist.entries()].sort()) {
+    console.log(`${n} clubs: ${count} grids (${pct(count, generated)})`);
+  }
+
+  console.log("\n== fat cells (>50 answers) per grid ==");
+  for (const [n, count] of [...fatHist.entries()].sort((a, b) => a[0] - b[0])) {
+    console.log(`${n} fat cells: ${count} grids (${pct(count, generated)})`);
+  }
 
   const catTotals = new Map<string, number>();
   for (const [crit, n] of slotCounts) {

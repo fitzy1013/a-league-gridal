@@ -76,7 +76,9 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     win_pct: new Map(),
     nationality: new Map(),
     position: new Map(),
-    current_club: new Map(),
+    own_goals: new Map(),
+    finals_goals: new Map(),
+    finals_apps: new Map(),
   };
   const clubStatMembers = new Map<string, Set<number>>();
 
@@ -144,6 +146,9 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     addToBands("minutes", s.minutes ?? 0, s.player_id);
     addToBands("yellow_cards", s.yellow_cards ?? 0, s.player_id);
     addToBands("clean_sheets", s.clean_sheets ?? 0, s.player_id);
+    addToBands("own_goals", s.own_goals ?? 0, s.player_id);
+    addToBands("finals_goals", s.finals_goals ?? 0, s.player_id);
+    addToBands("finals_apps", s.finals_appearances ?? 0, s.player_id);
 
     const clubCount = clubCounts.get(s.player_id) ?? 0;
     addToBands("clubs", clubCount, s.player_id);
@@ -163,16 +168,6 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     }
     for (const label of positionLabels(p.position)) {
       addToMembers("position", label, p.id);
-    }
-  }
-
-  // Current club (players.club_id), keyed by club display name.
-  const clubNameById = new Map(opts.clubs.map((c) => [c.id, c.name]));
-  for (const p of opts.players) {
-    if (p.club_id == null) continue;
-    const name = clubNameById.get(p.club_id);
-    if (name) {
-      addToMembers("current_club", name, p.id);
     }
   }
 
@@ -410,7 +405,9 @@ const NON_CLUB_CATEGORIES: Category[] = [
   "win_pct",
   "nationality",
   "position",
-  "current_club"];
+  "own_goals",
+  "finals_goals",
+  "finals_apps"];
 
 /**
  * Category groups that are too similar to appear together in one grid; at most
@@ -453,10 +450,15 @@ function criterionScore(dataset: GridDataset, candidate: Criterion, others: Crit
   return min;
 }
 
-function labelsFor(dataset: GridDataset, category: Category): string[] {
+function labelsFor(
+  dataset: GridDataset,
+  category: Category,
+  banned?: Set<string>,
+): string[] {
   const deprecated = DEPRECATED_BAND_LABELS[category as BandedCategory];
   return [...dataset.members[category].keys()].filter(
-    (label) => !deprecated?.includes(label),
+    (label) =>
+      !deprecated?.includes(label) && !(banned?.has(`${category}:${label}`) ?? false),
   );
 }
 
@@ -466,10 +468,11 @@ function pickCriterion(
   constraints: Criterion[],
   rng: () => number,
   mode: "diverse" | "best" = "diverse",
+  banned?: Set<string>,
 ): Criterion | null {
   const candidates: { criterion: Criterion; score: number }[] = [];
   for (const category of categories) {
-    for (const label of labelsFor(dataset, category)) {
+    for (const label of labelsFor(dataset, category, banned)) {
       const score = criterionScore(dataset, { category, label }, constraints);
       if (score > 0) candidates.push({ criterion: { category, label }, score });
     }
@@ -525,6 +528,9 @@ export interface GenerateGridOptions {
   minDiffCriteria?: number;
   /** club display names that may not be used at all this grid (cooldown) */
   excludeClubs?: string[];
+  /** "category:label" criteria banned this grid (per-criterion rotation
+   * cooldown; clubs are exempt and handled by excludeClubs) */
+  excludeCriteria?: string[];
   /** min shared players a club column must have with every club row
    * (default 2; relaxes to 1 when too few candidates) */
   columnMinShared?: number;
@@ -552,6 +558,7 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
       .map((name) => dataset.clubs.find((c) => c.name === name)?.id)
       .filter((id): id is number => id != null),
   );
+  const bannedCriteria = new Set(opts.excludeCriteria ?? []);
   const columnMinShared = opts.columnMinShared ?? 2;
   const weightsById = new Map<number, number>();
   for (const c of dataset.clubs) {
@@ -577,6 +584,7 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
         exclude,
         minDiffCriteria,
         excludeClubIds,
+        bannedCriteria,
         columnMinShared,
         weightsById,
         rng,
@@ -602,6 +610,7 @@ function tryGenerate(
   exclude: string[],
   minDiffCriteria: number,
   excludeClubIds: Set<number>,
+  bannedCriteria: Set<string>,
   columnMinShared: number,
   weightsById: Map<number, number>,
   rng: () => number,
@@ -620,7 +629,7 @@ function tryGenerate(
   // least one club on each axis so club x stat cells exist. Drawn below 0.75
   // because 3-club attempts survive the difficulty gates slightly more often,
   // which would otherwise skew the surviving distribution to ~80/20.
-  const targetClubs = Math.max(minDistinctClubs, rng() < 0.77 ? 3 : 4);
+  const targetClubs = Math.max(minDistinctClubs, rng() < 0.9 ? 3 : 4);
   let kR = 1 + Math.floor(rng() * (targetClubs - 1));
   kR = Math.min(kR, size);
   const kC = Math.min(targetClubs - kR, size);
@@ -711,12 +720,22 @@ function tryGenerate(
   ): Criterion[] => {
     const out: Criterion[] = [];
     let pool = [...categories];
+    // Attempt the reserved category first, before intra-axis constraints
+    // accumulate — niche criteria survive at much higher rates.
+    const reservedFirst = pool.filter((c) => c === reservedCategory);
+    pool = [...reservedFirst, ...shuffle(pool.filter((c) => c !== reservedCategory), rng)];
     for (let i = 0; i < slots; i++) {
-      pool = shuffle(pool, rng);
       let chosen: Criterion | null = null;
       for (let j = 0; j < pool.length && !chosen; j++) {
         const category = pool[j];
-        const crit = pickCriterion(dataset, [category], constraints, rng, category === reservedCategory ? "best" : "diverse");
+        const crit = pickCriterion(
+          dataset,
+          [category],
+          constraints,
+          rng,
+          category === reservedCategory ? "best" : "diverse",
+          bannedCriteria,
+        );
         if (crit) {
           chosen = crit;
           pool.splice(j, 1);

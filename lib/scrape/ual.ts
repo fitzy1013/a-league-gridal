@@ -32,6 +32,11 @@ export function playerStatsUrl(type: StatType, season: string): string {
   return `${UAL_BASE}/statistics/player/?type=${type}&season=${encodeURIComponent(season)}`;
 }
 
+/** Statistics page filtered by the "Show" dropdown (fin/og/pen/...). */
+export function playerStatsShowUrl(type: StatType, show: string): string {
+  return `${UAL_BASE}/statistics/player/?type=${type}&season=all&show=${show}`;
+}
+
 export function generalStatsUrl(season: string): string {
   return `${UAL_BASE}/statistics/player/?type=pl&season=${encodeURIComponent(season)}`;
 }

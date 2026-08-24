@@ -200,3 +200,31 @@ export function parseAllPlayersPage(
 
   return result;
 }
+/**
+ * Parses a single-value statistics page (the "Show" filter variants):
+ * Player | Position | Club | Club | Nationality | <value>.
+ * Used for finals appearances (pa/fin), finals goals (pg/fin) and
+ * own goals (pg/og).
+ */
+export function parseSingleValueStats(
+  html: string,
+): { playerId: number; value: number }[] {
+  const $ = cheerio.load(html);
+  const result: { playerId: number; value: number }[] = [];
+
+  $("#statistics-data-table tbody tr").each((_, tr) => {
+    const tds = $(tr).find("td");
+    if (tds.length < 6) return;
+
+    const playerLink = $(tds[0]).find("a").first();
+    const href = playerLink.attr("href") ?? "";
+    const playerIdMatch = href.match(/player_id=(\d+)/);
+    if (!playerIdMatch) return;
+
+    const value = parseIntCell($(tds[5]).text());
+    if (value == null) return;
+    result.push({ playerId: Number(playerIdMatch[1]), value });
+  });
+
+  return result;
+}

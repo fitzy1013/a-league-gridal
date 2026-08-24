@@ -12,7 +12,9 @@ export type Category =
   | "win_pct"
   | "nationality"
   | "position"
-  | "current_club";
+  | "own_goals"
+  | "finals_goals"
+  | "finals_apps";
 
 /** Categories whose criteria are numeric bands (see NUMERIC_BANDS). */
 export type BandedCategory = Extract<
@@ -27,6 +29,9 @@ export type BandedCategory = Extract<
   | "clean_sheets"
   | "debut_age"
   | "win_pct"
+  | "own_goals"
+  | "finals_goals"
+  | "finals_apps"
 >;
 
 /** Categories whose criteria are plain values (club name, country, position). */
@@ -66,7 +71,9 @@ export const ALL_CATEGORIES: Category[] = [
   "win_pct",
   "nationality",
   "position",
-  "current_club",
+  "own_goals",
+  "finals_goals",
+  "finals_apps",
 ];
 
 export interface NumericBand {

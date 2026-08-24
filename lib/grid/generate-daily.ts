@@ -95,6 +95,33 @@ export interface DailyContext {
   dataset: GridDataset;
   exclude: string[];
   excludedClubs: string[];
+  /** "category:label" criteria used in the recent window — rotated out so no
+   * single stat criterion dominates. Clubs are exempt (own cooldown). */
+  bannedCriteria: string[];
+}
+
+/** How many recent grids count toward the stat-criterion rotation. */
+const CRITERION_ROTATION_GRIDS = 14;
+
+/** Non-club criteria seen in the recent window are rotated out. */
+function bannedStatCriteria(recent: {
+  row_type: string;
+  col_type: string;
+  row_values: string[];
+  col_values: string[];
+}[]): string[] {
+  const seen = new Set<string>();
+  for (const g of recent.slice(0, CRITERION_ROTATION_GRIDS)) {
+    const rt = JSON.parse(g.row_type) as Category[];
+    const ct = JSON.parse(g.col_type) as Category[];
+    rt.forEach((cat, i) => {
+      if (cat !== "club") seen.add(`${cat}:${g.row_values[i]}`);
+    });
+    ct.forEach((cat, i) => {
+      if (cat !== "club") seen.add(`${cat}:${g.col_values[i]}`);
+    });
+  }
+  return [...seen];
 }
 
 /**
@@ -120,6 +147,7 @@ export async function loadDailyContext(
     dataset: resolvedDataset,
     exclude: (recent ?? []).map(signatureFromStoredGrid),
     excludedClubs: [...cooledOutClubs(recent ?? []), ...spacedOutClubs(recent ?? [])],
+    bannedCriteria: bannedStatCriteria(recent ?? []),
   };
 }
 
@@ -129,6 +157,7 @@ export function buildDailyCandidate(ctx: DailyContext): GridSpec {
     exclude: ctx.exclude,
     minDiffCriteria: 2,
     excludeClubs: ctx.excludedClubs,
+    excludeCriteria: ctx.bannedCriteria,
     clubWeights: CLUB_WEIGHTS,
   });
 }
