@@ -14,6 +14,7 @@ export interface PlayerRow {
   club_id: number | null;
   nationality: string | null;
   nationality_flag_url: string | null;
+  height: number | null;
 }
 
 export interface PlayerClubRow {
@@ -96,12 +97,29 @@ export async function loadClubs(client: SupabaseClient): Promise<ClubRow[]> {
 }
 
 export async function loadPlayers(client: SupabaseClient): Promise<PlayerRow[]> {
-  return fetchAllRows<PlayerRow>((from, to) =>
-    client
-      .from("players")
-      .select("id,name,position,club_id,nationality,nationality_flag_url")
-      .range(from, to),
+  // Prefer the height column; fall back gracefully when the
+  // 0006_player_height migration hasn't been applied yet.
+  const withHeight = await fetchPlayerPage("id,name,position,club_id,nationality,nationality_flag_url,height");
+  if (withHeight) return withHeight;
+  return (
+    (await fetchPlayerPage(
+      "id,name,position,club_id,nationality,nationality_flag_url",
+    ))?.map((r) => ({ ...(r as PlayerRow), height: null })) ?? []
   );
+
+  async function fetchPlayerPage(columns: string): Promise<PlayerRow[] | null> {
+    try {
+      return await fetchAllRows<PlayerRow>((from, to) =>
+        client
+          .from("players")
+          .select(columns)
+          .range(from, to) as unknown as PromiseLike<PageResult<PlayerRow>>,
+      );
+    } catch (e) {
+      if (/height/.test(e instanceof Error ? e.message : "")) return null;
+      throw e;
+    }
+  }
 }
 
 export async function loadPlayerClubs(client: SupabaseClient): Promise<PlayerClubRow[]> {

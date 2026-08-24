@@ -111,6 +111,19 @@ export async function playerSatisfiesCriterion(
       const pct = (wins / apps) * 100;
       return pct >= band.min && pct <= band.max;
     }
+    case "height": {
+      const band = bandForLabel("height", displayLabel);
+      if (!band) return false;
+      const { data: player } = await db
+        .from("players")
+        .select("height,name")
+        .eq("id", playerId)
+        .maybeSingle();
+      if (!player?.height) return false;
+      // Owner request: Elbasan Rashani is ignored for the tallest band.
+      if (band.label === "190cm+" && /rashani/i.test(player.name)) return false;
+      return player.height >= band.min && player.height <= band.max;
+    }
     case "appearances":
     case "goals":
     case "red_cards":
@@ -213,5 +226,175 @@ export async function playerSatisfiesClubStatCell(
     }
     default:
       return false;
+  }
+}
+
+const plural = (v: number) => (v === 1 ? "" : "s");
+
+/**
+ * Human-readable reveal of the player's actual value for a criterion, used to
+ * teach after an incorrect guess. When clubName is given and the category is
+ * pair-aware, the value is the one recorded AT that club; otherwise it is the
+ * career-wide figure. Returns null when nothing meaningful can be said.
+ */
+export async function describeStatValue(
+  db: SupabaseClient,
+  playerId: number,
+  playerName: string,
+  category: Category,
+  displayLabel: string,
+  clubName?: string,
+): Promise<string | null> {
+  // ---- per-club values (Club x Stat cells) ----
+  if (clubName) {
+    const { data: club } = await db
+      .from("clubs")
+      .select("id")
+      .eq("name", clubName)
+      .maybeSingle();
+    if (!club) return `${playerName} never played for ${clubName}`;
+    const { data: row } = await db
+      .from("player_clubs")
+      .select("appearances,goals,yellow_cards,red_cards,wins,debut_age")
+      .eq("player_id", playerId)
+      .eq("club_id", club.id)
+      .maybeSingle();
+    if (!row) return `${playerName} never played for ${clubName}`;
+
+    switch (category) {
+      case "goals":
+        return `${playerName} scored ${row.goals ?? 0} goal${plural(row.goals ?? 0)} for ${clubName}`;
+      case "appearances":
+        return `${playerName} made ${row.appearances ?? 0} appearance${plural(row.appearances ?? 0)} for ${clubName}`;
+      case "yellow_cards":
+        return `${playerName} received ${row.yellow_cards ?? 0} yellow card${plural(row.yellow_cards ?? 0)} for ${clubName}`;
+      case "red_cards":
+        return `${playerName} received ${row.red_cards ?? 0} red card${plural(row.red_cards ?? 0)} for ${clubName}`;
+      case "debut_age":
+        return row.debut_age != null
+          ? `${playerName} debuted for ${clubName} at age ${row.debut_age}`
+          : `${playerName} has no debut age recorded for ${clubName}`;
+      case "win_pct": {
+        const apps = row.appearances ?? 0;
+        if (row.wins == null || apps === 0) {
+          return `${playerName} won no games for ${clubName}`;
+        }
+        const pct = Math.round((row.wins / apps) * 100);
+        return `${playerName} won ${row.wins} of ${apps} games (${pct}%) for ${clubName}`;
+      }
+      default:
+        break;
+    }
+  }
+
+  // ---- career-wide values ----
+  switch (category) {
+    case "appearances":
+    case "goals":
+    case "minutes":
+    case "yellow_cards":
+    case "red_cards":
+    case "clean_sheets":
+    case "own_goals":
+    case "finals_goals":
+    case "finals_apps":
+    case "championships":
+    case "clubs": {
+      const { data: stat } = await db
+        .from("player_season_stats")
+        .select(
+          "appearances,goals,yellow_cards,red_cards,clean_sheets,minutes,own_goals,finals_goals,finals_appearances",
+        )
+        .eq("player_id", playerId)
+        .eq("season", "all")
+        .maybeSingle();
+      let v: number;
+      switch (category) {
+        case "goals": v = stat?.goals ?? 0; return `${playerName} scored ${v} A-League goal${plural(v)}`;
+        case "appearances": v = stat?.appearances ?? 0; return `${playerName} made ${v} A-League appearance${plural(v)}`;
+        case "minutes": v = stat?.minutes ?? 0; return `${playerName} played ${(v).toLocaleString("en-AU")} minutes`;
+        case "yellow_cards": v = stat?.yellow_cards ?? 0; return `${playerName} collected ${v} yellow card${plural(v)}`;
+        case "red_cards": v = stat?.red_cards ?? 0; return `${playerName} collected ${v} red card${plural(v)}`;
+        case "clean_sheets": v = stat?.clean_sheets ?? 0; return `${playerName} kept ${v} clean sheet${plural(v)}`;
+        case "own_goals": v = stat?.own_goals ?? 0; return `${playerName} scored ${v} own goal${plural(v)}`;
+        case "finals_goals": v = stat?.finals_goals ?? 0; return `${playerName} scored ${v} goal${plural(v)} in finals`;
+        case "finals_apps": v = stat?.finals_appearances ?? 0; return `${playerName} made ${v} finals appearance${plural(v)}`;
+        case "championships": {
+          const { data: pcRows } = await db
+            .from("player_clubs")
+            .select("club_id")
+            .eq("player_id", playerId);
+          const clubIds = [...new Set((pcRows ?? []).map((r) => r.club_id))];
+          if (clubIds.length === 0) return `${playerName} played for no championship-winning clubs`;
+          const { count } = await db
+            .from("club_titles")
+            .select("club_id", { count: "exact", head: true })
+            .eq("title", "Championship")
+            .in("club_id", clubIds);
+          const n = count ?? 0;
+          return `${playerName} played for ${n} championship-winning club${plural(n)}`;
+        }
+        case "clubs": {
+          const { data: pcRows } = await db
+            .from("player_clubs")
+            .select("club_id")
+            .eq("player_id", playerId);
+          const n = new Set((pcRows ?? []).map((r) => r.club_id)).size;
+          return `${playerName} played for ${n} A-League club${plural(n)}`;
+        }
+        default:
+          return null;
+      }
+    }
+    case "win_pct": {
+      const { data: stat } = await db
+        .from("player_season_stats")
+        .select("appearances")
+        .eq("player_id", playerId)
+        .eq("season", "all")
+        .maybeSingle();
+      const apps = stat?.appearances ?? 0;
+      const { data: rows } = await db
+        .from("player_clubs")
+        .select("wins")
+        .eq("player_id", playerId);
+      const wins = (rows ?? []).reduce<number>((acc, r) => acc + (r.wins ?? 0), 0);
+      if (apps < WIN_PCT_MIN_APPEARANCES || !rows?.some((r) => r.wins != null)) {
+        return `${playerName} has not enough games for a win %`;
+      }
+      return `${playerName} won ${Math.round((wins / apps) * 100)}% of matches`;
+    }
+    case "debut_age": {
+      const { data: rows } = await db
+        .from("player_clubs")
+        .select("debut_age")
+        .eq("player_id", playerId);
+      const ages = (rows ?? []).map((r) => r.debut_age).filter((a): a is number => a != null);
+      if (ages.length === 0) return `${playerName} has no debut age recorded`;
+      return `${playerName} debuted in the A-League at age ${Math.min(...ages)}`;
+    }
+    case "nationality": {
+      const { data: player } = await db
+        .from("players")
+        .select("nationality")
+        .eq("id", playerId)
+        .maybeSingle();
+      return player?.nationality
+        ? `${playerName}'s nationality is ${player.nationality}`
+        : `${playerName} has no nationality recorded`;
+    }
+    case "position": {
+      const { data: player } = await db
+        .from("players")
+        .select("position")
+        .eq("id", playerId)
+        .maybeSingle();
+      const labels = positionLabels(player?.position);
+      return labels.length > 0
+        ? `${playerName} is classified as ${labels.join(" or ")}`
+        : `${playerName} has no position recorded`;
+    }
+    default:
+      return null;
   }
 }

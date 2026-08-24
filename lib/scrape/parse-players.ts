@@ -228,3 +228,12 @@ export function parseSingleValueStats(
 
   return result;
 }
+
+/**
+ * Extracts a player's height in cm from their UAL profile page
+ * (meta description reads "... is 174 cm tall ...").
+ */
+export function parsePlayerHeight(html: string): number | null {
+  const match = html.match(/is\s+(\d{2,3})\s*cm\s+tall/i);
+  return match ? Number(match[1]) : null;
+}

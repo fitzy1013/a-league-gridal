@@ -54,10 +54,11 @@ async function main() {
       goodHist[good] = (goodHist[good] ?? 0) + 1;
       clubMin = Math.min(clubMin, clubCount);
       clubMax = Math.max(clubMax, clubCount);
-      if (clubCount < 3 || singletons > 1 || good < 5 || hard < 1) {
+      const uniqueSolutions = new Set(grid.solution.map((s) => s.playerId)).size === grid.solution.length;
+      if (clubCount < 3 || singletons > 1 || good < 5 || hard < 1 || !uniqueSolutions) {
         failures++;
         console.log(
-          `FAIL #${n}: clubs=${clubCount} singletons=${singletons} good=${good} hard=${hard}`,
+          `FAIL #${n}: clubs=${clubCount} singletons=${singletons} good=${good} hard=${hard} duplicateSolutions=${!uniqueSolutions}`,
           JSON.stringify(grid.rowValues),
           JSON.stringify(grid.colValues),
         );

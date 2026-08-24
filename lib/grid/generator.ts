@@ -79,6 +79,7 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     own_goals: new Map(),
     finals_goals: new Map(),
     finals_apps: new Map(),
+    height: new Map(),
   };
   const clubStatMembers = new Map<string, Set<number>>();
 
@@ -168,6 +169,17 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     }
     for (const label of positionLabels(p.position)) {
       addToMembers("position", label, p.id);
+    }
+    // Height bands. Owner request: ignore Elbasan Rashani for the tallest
+    // band (his listed height would otherwise spoil 190cm+ cells).
+    if (p.height != null) {
+      const skipTallest = /rashani/i.test(p.name);
+      for (const band of NUMERIC_BANDS.height) {
+        if (p.height >= band.min && p.height <= band.max) {
+          if (band.label === "190cm+" && skipTallest) continue;
+          addToMembers("height", band.label, p.id);
+        }
+      }
     }
   }
 
@@ -366,6 +378,39 @@ function intersection(a: Set<number>, b: Set<number>): Set<number> {
 }
 
 /**
+ * Assigns one distinct player to every cell (a bipartite matching). Cells are
+ * processed most-constrained first with shuffled candidates for variety;
+ * backtracking guarantees an assignment is found whenever one exists. Returns
+ * null when the cells cannot all be satisfied by unique players.
+ */
+function pickDistinctAssignment(cellSets: Set<number>[], rng: () => number): number[] | null {
+  const order = cellSets
+    .map((_, i) => i)
+    .sort((a, b) => cellSets[a].size - cellSets[b].size);
+  const used = new Set<number>();
+  const result: (number | null)[] = new Array(cellSets.length).fill(null);
+
+  const backtrack = (idx: number): boolean => {
+    if (idx === order.length) return true;
+    const cellIdx = order[idx];
+    const candidates = shuffle(
+      [...cellSets[cellIdx]].filter((id) => !used.has(id)),
+      rng,
+    );
+    for (const id of candidates) {
+      used.add(id);
+      result[cellIdx] = id;
+      if (backtrack(idx + 1)) return true;
+      used.delete(id);
+      result[cellIdx] = null;
+    }
+    return false;
+  };
+
+  return backtrack(0) ? (result as number[]) : null;
+}
+
+/**
  * Players satisfying BOTH cell criteria.
  *
  * Club x pair-aware-stat cells use the per-club stat membership (e.g.
@@ -407,7 +452,8 @@ const NON_CLUB_CATEGORIES: Category[] = [
   "position",
   "own_goals",
   "finals_goals",
-  "finals_apps"];
+  "finals_apps",
+  "height"];
 
 /**
  * Category groups that are too similar to appear together in one grid; at most
@@ -767,13 +813,16 @@ function tryGenerate(
   }
 
   // 6. Candidate counts per cell: enforce difficulty rules.
+  const cellSets: Set<number>[] = [];
   let singletons = 0;
   let goodCells = 0;
   let hardCells = 0;
   let fatCells = 0;
   for (let i = 0; i < size; i++) {
     for (let j = 0; j < size; j++) {
-      const n = cellMembers(dataset, rowCrits[i], colCrits[j]).size;
+      const set = cellMembers(dataset, rowCrits[i], colCrits[j]);
+      cellSets.push(set);
+      const n = set.size;
       if (n === 0) throw new Error("empty cell");
       if (n === 1) singletons++;
       if (n >= goodCandidateCount) goodCells++;
@@ -786,12 +835,16 @@ function tryGenerate(
   if (hardCells < minHardCells) throw new Error("not enough hard cells");
   if (fatCells > maxFatCells) throw new Error("too many fat cells");
 
-  // 7. Solution.
+  // 7. Solution: one DISTINCT player per cell. Cells are matched via
+  //    backtracking (most-constrained first, shuffled candidates), so grids
+  //    where two cells could only ever share the same player are rejected
+  //    here and the whole attempt re-rolls.
+  const assignment = pickDistinctAssignment(cellSets, rng);
+  if (!assignment) throw new Error("no distinct-solution assignment");
   const solution: CellSolution[] = [];
   for (let i = 0; i < size; i++) {
     for (let j = 0; j < size; j++) {
-      const candidates = [...cellMembers(dataset, rowCrits[i], colCrits[j])];
-      const playerId = pickOne(candidates, rng);
+      const playerId = assignment[i * size + j];
       solution.push({
         rowIdx: i,
         colIdx: j,

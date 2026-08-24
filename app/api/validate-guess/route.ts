@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getGrid } from "@/lib/db/queries";
-import { playerSatisfiesClubStatCell, playerSatisfiesCriterion } from "@/lib/grid/validate";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { getPlayer, getGrid } from "@/lib/db/queries";
+import {
+  describeStatValue,
+  playerSatisfiesClubStatCell,
+  playerSatisfiesCriterion,
+} from "@/lib/grid/validate";
 import { isPairAwareCategory, type BandedCategory, type Category } from "@/lib/grid/types";
 import { createClient } from "@/lib/supabase/server";
+
+type SupabaseClientLike = SupabaseClient;
 
 /**
  * Validates whether a player fits a grid cell. Accepts either a stored
@@ -70,30 +77,87 @@ export async function POST(request: NextRequest) {
   // combination is two independent axis checks.
   const rowType = rTypes[rowIdx!];
   const colType = cTypes[colIdx!];
+  const rowValue = rValues[rowIdx!];
+  const colValue = cValues[colIdx!];
   let correct: boolean;
-  if (rowType === "club" && isPairAwareCategory(colType)) {
+  let hint: string | null = null;
+
+  const clubAxis =
+    rowType === "club" && isPairAwareCategory(colType)
+      ? { clubName: rowValue, statCat: colType as BandedCategory, statLabel: colValue, onRow: true }
+      : colType === "club" && isPairAwareCategory(rowType)
+        ? { clubName: colValue, statCat: rowType as BandedCategory, statLabel: rowValue, onRow: false }
+        : null;
+
+  if (clubAxis) {
     correct = await playerSatisfiesClubStatCell(
       supabase,
       playerId!,
-      rValues[rowIdx!],
-      colType as BandedCategory,
-      cValues[colIdx!],
-    );
-  } else if (colType === "club" && isPairAwareCategory(rowType)) {
-    correct = await playerSatisfiesClubStatCell(
-      supabase,
-      playerId!,
-      cValues[colIdx!],
-      rowType as BandedCategory,
-      rValues[rowIdx!],
+      clubAxis.clubName,
+      clubAxis.statCat,
+      clubAxis.statLabel,
     );
   } else {
     const [rowOk, colOk] = await Promise.all([
-      playerSatisfiesCriterion(supabase, playerId!, rowType, rValues[rowIdx!]),
-      playerSatisfiesCriterion(supabase, playerId!, colType, cValues[colIdx!]),
+      playerSatisfiesCriterion(supabase, playerId!, rowType, rowValue),
+      playerSatisfiesCriterion(supabase, playerId!, colType, colValue),
     ]);
     correct = rowOk && colOk;
+
+    const isClubClubCell = rowType === "club" && colType === "club";
+    if (!correct && !isClubClubCell) {
+      hint = await buildHint(supabase, playerId!, [
+        ...(rowType !== "club"
+          ? [{ category: rowType, label: rowValue }]
+          : [{ category: "club" as Category, label: rowValue }]),
+        ...(colType !== "club"
+          ? [{ category: colType, label: colValue }]
+          : [{ category: "club" as Category, label: colValue }]),
+      ]);
+    }
   }
 
-  return NextResponse.json({ correct });
+  if (!correct && !hint && clubAxis) {
+    // Club x Stat miss where the player isn't even at the club.
+    hint = await buildHint(supabase, playerId!, [
+      {
+        category: clubAxis.statCat,
+        label: clubAxis.statLabel,
+        clubName: clubAxis.clubName,
+      },
+    ]);
+  }
+
+  return NextResponse.json(hint ? { correct, hint } : { correct });
+
+  type HintCriterion = { category: Category; label: string; clubName?: string };
+
+  async function buildHint(
+    db: SupabaseClientLike,
+    pid: number,
+    criteria: HintCriterion[],
+  ): Promise<string | null> {
+    const name =
+      (
+        (await getPlayer(db, pid)) as { name?: string } | null
+      )?.name ?? `Player #${pid}`;
+    const parts: string[] = [];
+    for (const c of criteria) {
+      if (c.category === "club") {
+        const played = await playerSatisfiesCriterion(db, pid, "club", c.label);
+        parts.push(played ? `${name} played for ${c.label}` : `${name} never played for ${c.label}`);
+        continue;
+      }
+      const phrase = await describeStatValue(
+        db,
+        pid,
+        name,
+        c.category,
+        c.label,
+        c.clubName,
+      );
+      if (phrase) parts.push(phrase);
+    }
+    return parts.length > 0 ? parts.join(" · ") : null;
+  }
 }

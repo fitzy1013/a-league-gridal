@@ -14,7 +14,8 @@ export type Category =
   | "position"
   | "own_goals"
   | "finals_goals"
-  | "finals_apps";
+  | "finals_apps"
+  | "height";
 
 /** Categories whose criteria are numeric bands (see NUMERIC_BANDS). */
 export type BandedCategory = Extract<
@@ -32,6 +33,7 @@ export type BandedCategory = Extract<
   | "own_goals"
   | "finals_goals"
   | "finals_apps"
+  | "height"
 >;
 
 /** Categories whose criteria are plain values (club name, country, position). */
@@ -74,6 +76,7 @@ export const ALL_CATEGORIES: Category[] = [
   "own_goals",
   "finals_goals",
   "finals_apps",
+  "height",
 ];
 
 export interface NumericBand {

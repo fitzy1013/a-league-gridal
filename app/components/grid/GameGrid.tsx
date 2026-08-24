@@ -52,6 +52,7 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
   const [showResult, setShowResult] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
   const recordedRef = useRef(false);
 
   // Restore saved progress after mount (client-only, SSR-safe).
@@ -111,8 +112,9 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
           headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
         });
-        const data = (await res.json()) as { correct?: boolean };
+        const data = (await res.json()) as { correct?: boolean; hint?: string };
         isCorrect = data.correct === true;
+        setHint(!isCorrect ? (data.hint ?? null) : null);
       } catch {
         // Network/server failure: mark incorrect rather than leaving the cell
         // stuck in a validating state.
@@ -242,12 +244,21 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
                 cell={cell}
                 selected={selected?.r === r && selected?.c === c}
                 disabled={finished}
-                onClick={() => setSelected({ r, c })}
+                onClick={() => {
+                  setSelected({ r, c });
+                  setHint(null);
+                }}
               />
             ))}
           </Fragment>
         ))}
       </div>
+
+      {hint && (
+        <p className="mt-3 rounded-md border border-foreground/10 bg-accent/50 px-3 py-2 text-sm">
+          {hint}
+        </p>
+      )}
 
       {selected && !finished && (
         <div className="mt-4">

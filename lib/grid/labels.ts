@@ -35,6 +35,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   own_goals: "Own Goals",
   finals_goals: "Finals Goals",
   finals_apps: "Finals Apps",
+  height: "Height",
 };
 
 /**
@@ -139,6 +140,10 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
   finals_apps: [
     { label: "5+", min: 5, max: Infinity },
     { label: "10+", min: 10, max: Infinity },
+  ],
+  height: [
+    { label: "190cm+", min: 190, max: Infinity },
+    { label: "170cm or shorter", min: 0, max: 170 },
   ],
 };
 
