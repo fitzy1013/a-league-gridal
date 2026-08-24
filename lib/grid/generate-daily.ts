@@ -181,16 +181,47 @@ export async function storeDailyGrid(
   return row.date;
 }
 
+export interface GeneratedDailyResult {
+  date: string;
+  grid: GridSpec;
+  upserted: boolean;
+}
+
 /**
  * Loads the dataset and upserts today's grid. Used by
  * /api/generate-daily-grid (Vercel cron) and scripts/generate-grid.ts.
+ *
+ * Idempotent: when a grid already exists for the target date (e.g. one
+ * pre-approved via /admin/daily for tomorrow), generation is skipped unless
+ * forced.
  */
 export async function generateDailyGrid(
   dataset?: GridDataset,
+  opts?: { force?: boolean },
 ): Promise<GeneratedDailyResult> {
   const supabase = createAdminClient();
+  const date = todaySydneyDate();
+
+  if (!opts?.force) {
+    const { data: existing } = await supabase
+      .from("grids")
+      .select("row_type,col_type,row_values,col_values,solution")
+      .eq("date", date)
+      .maybeSingle();
+    if (existing) {
+      const grid = {
+        rowTypes: JSON.parse(existing.row_type) as Category[],
+        colTypes: JSON.parse(existing.col_type) as Category[],
+        rowValues: existing.row_values as string[],
+        colValues: existing.col_values as string[],
+        solution: existing.solution as GridSpec["solution"],
+      };
+      return { date, grid, upserted: false };
+    }
+  }
+
   const ctx = await loadDailyContext(supabase, dataset);
   const grid = buildDailyCandidate(ctx);
-  const date = await storeDailyGrid(supabase, grid);
+  await storeDailyGrid(supabase, grid, date);
   return { date, grid, upserted: true };
 }

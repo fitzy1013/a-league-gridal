@@ -17,3 +17,9 @@ const formatter = new Intl.DateTimeFormat("en-CA", {
 export function todaySydneyDate(): string {
   return formatter.format(new Date());
 }
+
+/** Tomorrow's date (YYYY-MM-DD) in Australia/Sydney. */
+export function tomorrowSydneyDate(): string {
+  const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  return formatter.format(d);
+}

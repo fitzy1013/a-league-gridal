@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/db/supabase-admin";
 import { loadGridDataset } from "@/lib/db/grid-loader";
 import { storeDailyGrid } from "@/lib/grid/generate-daily";
 import { cellAnswers } from "@/lib/grid/answers";
+import { todaySydneyDate, tomorrowSydneyDate } from "@/lib/dates";
 import type { Category, CellSolution, GridSpec } from "@/lib/grid/types";
 
 export const maxDuration = 60;
@@ -13,6 +14,8 @@ interface CommitBody {
   rowValues?: string[];
   colValues?: string[];
   solution?: CellSolution[];
+  /** "today" (default) or "tomorrow" — which Sydney date to publish for */
+  target?: "today" | "tomorrow";
 }
 
 /**
@@ -81,6 +84,10 @@ export async function POST(request: Request) {
     colValues: body.colValues,
     solution: body.solution,
   };
-  const date = await storeDailyGrid(supabase, spec);
+  const date = await storeDailyGrid(
+    supabase,
+    spec,
+    body.target === "tomorrow" ? tomorrowSydneyDate() : todaySydneyDate(),
+  );
   return Response.json({ ok: true, date });
 }
