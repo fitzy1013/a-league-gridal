@@ -58,17 +58,20 @@ export function positionLabels(position: string | null | undefined): string[] {
 export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
   appearances: [
     { label: "Under 25", min: 0, max: 24 },
+    // Legacy band kept only so the currently-live daily grid validates.
+    // Excluded from generation (see DEPRECATED_BAND_LABELS); remove once it rotates out.
     { label: "25+", min: 25, max: Infinity },
+    { label: "25-49", min: 25, max: 49 },
     { label: "50+", min: 50, max: Infinity },
     { label: "100+", min: 100, max: Infinity },
     { label: "200+", min: 200, max: Infinity },
   ],
   goals: [
     { label: "Under 5", min: 0, max: 4 },
-    { label: "10+", min: 10, max: Infinity },
-    { label: "20+", min: 20, max: Infinity },
-    { label: "30+", min: 30, max: Infinity },
+    { label: "10-30", min: 10, max: 30 },
+    { label: "20-50", min: 20, max: 50 },
     { label: "50+", min: 50, max: Infinity },
+    { label: "100+", min: 100, max: Infinity },
   ],
   red_cards: [
     { label: "0", min: 0, max: 0 },
@@ -82,7 +85,7 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
   ],
   minutes: [
     { label: "Under 1000", min: 0, max: 999 },
-    { label: "1000+", min: 1000, max: Infinity },
+    { label: "1000-4999", min: 1000, max: 4999 },
     { label: "5000+", min: 5000, max: Infinity },
     { label: "10000+", min: 10000, max: Infinity },
   ],
@@ -92,14 +95,21 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
     { label: "5+", min: 5, max: Infinity },
   ],
   yellow_cards: [
+    { label: "Under 5", min: 0, max: 4 },
     { label: "Under 10", min: 0, max: 9 },
+    // Legacy band kept only so the currently-live daily grid validates.
+    // Excluded from generation (see DEPRECATED_BAND_LABELS); remove once it rotates out.
     { label: "10+", min: 10, max: Infinity },
+    { label: "10-50", min: 10, max: 50 },
     { label: "25+", min: 25, max: Infinity },
+    { label: "50+", min: 50, max: Infinity },
   ],
   clean_sheets: [
+    { label: "Under 5", min: 0, max: 4 },
     { label: "Under 10", min: 0, max: 9 },
+    { label: "10-50", min: 10, max: 50 },
     { label: "10+", min: 10, max: Infinity },
-    { label: "20+", min: 20, max: Infinity },
+    { label: "25+", min: 25, max: Infinity },
     { label: "50+", min: 50, max: Infinity },
   ],
   debut_age: [

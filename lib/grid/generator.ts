@@ -426,6 +426,16 @@ const EXCLUSIVE_GROUPS: Category[][] = [
 const MAX_LABEL_SET_SIZE = 400;
 
 /**
+ * Legacy bands kept in NUMERIC_BANDS only so the currently-live daily grid
+ * still validates. Never offered to new grids; remove entries once the live
+ * grid that uses them has rotated out.
+ */
+const DEPRECATED_BAND_LABELS: Partial<Record<BandedCategory, string[]>> = {
+  appearances: ["25+"],
+  yellow_cards: ["10+"],
+};
+
+/**
  * Minimum intersection size between a candidate criterion and every existing
  * constraint. 0 means the candidate is infeasible; higher is better (more
  * answers per cell). Pair-aware: a stat criterion scored against a club uses
@@ -444,7 +454,10 @@ function criterionScore(dataset: GridDataset, candidate: Criterion, others: Crit
 }
 
 function labelsFor(dataset: GridDataset, category: Category): string[] {
-  return [...dataset.members[category].keys()];
+  const deprecated = DEPRECATED_BAND_LABELS[category as BandedCategory];
+  return [...dataset.members[category].keys()].filter(
+    (label) => !deprecated?.includes(label),
+  );
 }
 
 function pickCriterion(
@@ -500,6 +513,10 @@ export interface GenerateGridOptions {
   hardCellMaxAnswers?: number;
   /** min cells that must be "hard" (default 1) */
   minHardCells?: number;
+  /** cells with more than this many answers are "fat" / too easy (default 50) */
+  fatCellMinAnswers?: number;
+  /** max cells allowed to be "fat" (default 2) */
+  maxFatCells?: number;
   /** sorted signatures ("category:displayLabel") of recent grids to avoid
    * repeating; the new grid must differ from each in at least minDiffCriteria
    * criteria */
@@ -526,6 +543,8 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
   const minGoodCells = opts.minGoodCells ?? Math.ceil((size * size) / 2);
   const hardCellMaxAnswers = opts.hardCellMaxAnswers ?? DEFAULT_HARD_CELL_MAX_ANSWERS;
   const minHardCells = opts.minHardCells ?? 1;
+  const fatCellMinAnswers = opts.fatCellMinAnswers ?? 50;
+  const maxFatCells = opts.maxFatCells ?? 2;
   const exclude = opts.exclude ?? [];
   const minDiffCriteria = opts.minDiffCriteria ?? 2;
   const excludeClubIds = new Set(
@@ -553,6 +572,8 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
         minGoodCells,
         hardCellMaxAnswers,
         minHardCells,
+        fatCellMinAnswers,
+        maxFatCells,
         exclude,
         minDiffCriteria,
         excludeClubIds,
@@ -576,6 +597,8 @@ function tryGenerate(
   minGoodCells: number,
   hardCellMaxAnswers: number,
   minHardCells: number,
+  fatCellMinAnswers: number,
+  maxFatCells: number,
   exclude: string[],
   minDiffCriteria: number,
   excludeClubIds: Set<number>,
@@ -728,6 +751,7 @@ function tryGenerate(
   let singletons = 0;
   let goodCells = 0;
   let hardCells = 0;
+  let fatCells = 0;
   for (let i = 0; i < size; i++) {
     for (let j = 0; j < size; j++) {
       const n = cellMembers(dataset, rowCrits[i], colCrits[j]).size;
@@ -735,11 +759,13 @@ function tryGenerate(
       if (n === 1) singletons++;
       if (n >= goodCandidateCount) goodCells++;
       if (n <= hardCellMaxAnswers) hardCells++;
+      if (n > fatCellMinAnswers) fatCells++;
     }
   }
   if (singletons > maxSingletonCells) throw new Error("too many singleton cells");
   if (goodCells < minGoodCells) throw new Error("not enough well-answerable cells");
   if (hardCells < minHardCells) throw new Error("not enough hard cells");
+  if (fatCells > maxFatCells) throw new Error("too many fat cells");
 
   // 7. Solution.
   const solution: CellSolution[] = [];

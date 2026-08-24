@@ -7,7 +7,7 @@ export const maxDuration = 60;
 
 /**
  * Generates and upserts today's grid. Triggered by the Vercel cron in
- * vercel.json (04:00 UTC, after scrape-stats on scrape days).
+ * vercel.json at 14:00 UTC (= Sydney midnight, AEST).
  */
 export async function GET(request: Request) {
   if (!isAuthorizedCron(request)) {

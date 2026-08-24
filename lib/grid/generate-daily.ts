@@ -91,14 +91,21 @@ function cooledOutClubs(recent: {
   return [...uses].filter(([, n]) => n >= MAX_CLUB_USES).map(([name]) => name);
 }
 
+export interface DailyContext {
+  dataset: GridDataset;
+  exclude: string[];
+  excludedClubs: string[];
+}
+
 /**
- * Loads the dataset and upserts today's grid. Used by
- * /api/generate-daily-grid (Vercel cron) and scripts/generate-grid.ts.
+ * Loads everything needed to build a daily-grid candidate (dataset + recent
+ * grid exclusions + club cooldowns). Used by the cron path and the admin
+ * preview endpoint.
  */
-export async function generateDailyGrid(
+export async function loadDailyContext(
+  supabase: ReturnType<typeof createAdminClient>,
   dataset?: GridDataset,
-): Promise<GeneratedDailyResult> {
-  const supabase = createAdminClient();
+): Promise<DailyContext> {
   const resolvedDataset = dataset ?? (await loadGridDataset(supabase));
 
   const today = todaySydneyDate();
@@ -109,29 +116,52 @@ export async function generateDailyGrid(
     .order("date", { ascending: false })
     .limit(14);
 
-  const exclude = (recent ?? []).map(signatureFromStoredGrid);
-  const excludedClubs = [
-    ...cooledOutClubs(recent ?? []),
-    ...spacedOutClubs(recent ?? []),
-  ];
-  const grid = generateGrid(resolvedDataset, {
-    exclude,
+  return {
+    dataset: resolvedDataset,
+    exclude: (recent ?? []).map(signatureFromStoredGrid),
+    excludedClubs: [...cooledOutClubs(recent ?? []), ...spacedOutClubs(recent ?? [])],
+  };
+}
+
+/** Generates a candidate grid from a context without touching the database. */
+export function buildDailyCandidate(ctx: DailyContext): GridSpec {
+  return generateGrid(ctx.dataset, {
+    exclude: ctx.exclude,
     minDiffCriteria: 2,
-    excludeClubs: excludedClubs,
+    excludeClubs: ctx.excludedClubs,
     clubWeights: CLUB_WEIGHTS,
   });
+}
 
+/** Upserts a spec as the daily grid for the given (default: today's) date. */
+export async function storeDailyGrid(
+  supabase: ReturnType<typeof createAdminClient>,
+  grid: GridSpec,
+  date?: string,
+): Promise<string> {
   const row = {
-    date: today,
+    date: date ?? todaySydneyDate(),
     row_type: JSON.stringify(grid.rowTypes),
     col_type: JSON.stringify(grid.colTypes),
     row_values: grid.rowValues,
     col_values: grid.colValues,
     solution: grid.solution,
   };
-
   const { error } = await supabase.from("grids").upsert(row, { onConflict: "date" });
   if (error) throw new Error(`upsert grid: ${error.message}`);
+  return row.date;
+}
 
-  return { date: today, grid, upserted: true };
+/**
+ * Loads the dataset and upserts today's grid. Used by
+ * /api/generate-daily-grid (Vercel cron) and scripts/generate-grid.ts.
+ */
+export async function generateDailyGrid(
+  dataset?: GridDataset,
+): Promise<GeneratedDailyResult> {
+  const supabase = createAdminClient();
+  const ctx = await loadDailyContext(supabase, dataset);
+  const grid = buildDailyCandidate(ctx);
+  const date = await storeDailyGrid(supabase, grid);
+  return { date, grid, upserted: true };
 }

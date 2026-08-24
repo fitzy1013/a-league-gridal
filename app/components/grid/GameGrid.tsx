@@ -8,6 +8,7 @@ import { recordResult } from "@/app/play/daily/actions";
 import { loadProgress, pruneOldProgress, saveProgress } from "./progress";
 import Cell from "./Cell";
 import GuessInput from "./GuessInput";
+import NextGridCountdown from "./NextGridCountdown";
 import ResultModal from "./ResultModal";
 import ShareButton from "./ShareButton";
 import type { CellState, ClientGridSpec, PlayerOption } from "./types";
@@ -177,6 +178,11 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
           <p className="text-sm text-muted-foreground">
             {spec.mode === "daily" && spec.date ? spec.date : "Practice mode — no persistence"}
           </p>
+          {spec.mode === "daily" && finished && (
+            <div className="mt-1">
+              <NextGridCountdown />
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {correct > 0 && (
