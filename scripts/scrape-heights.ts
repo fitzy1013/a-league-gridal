@@ -1,69 +1,52 @@
 import { createAdminClient } from "../lib/db/supabase-admin";
-import { UAL_BASE, fetchHtml } from "../lib/scrape/ual";
-import { parsePlayerHeight } from "../lib/scrape/parse-players";
+import { fetchHtml } from "../lib/scrape/ual";
 
 process.loadEnvFile(".env");
 
 /**
- * One-off (rerunnable) crawler: visits every player's UAL profile page and
- * stores their height in players.height. Heights barely ever change, so this
- * is intentionally separate from the nightly scraper.
+ * Populates players.height from UAL's tallest/shortest statistics pages
+ * (?type=pl&show=tpl / show=spl), which together list every player with a
+ * known height. Players without a valid height on UAL are ignored.
  *
- * Usage: npx tsx scripts/scrape-heights.ts [concurrency=4]
+ * Usage: npx tsx scripts/scrape-heights.ts
  */
 async function main() {
   const supabase = createAdminClient();
-  const concurrency = Number(process.argv[2] ?? 4);
 
-  const ids: number[] = [];
-  for (let from = 0; ; from += 1000) {
-    const { data } = await supabase.from("players").select("id,height").range(from, from + 999);
-    for (const r of data ?? []) {
-      if (r.height == null) ids.push(r.id);
-    }
-    if (!data || data.length < 1000) break;
-  }
-  console.log(`players missing height: ${ids.length}`);
-  if (ids.length === 0) return;
-
-  let done = 0;
-  let found = 0;
-  let failures = 0;
-  const updates: { id: number; height: number | null }[] = [];
-
-  async function worker(queue: number[]) {
-    while (queue.length > 0) {
-      const id = queue.shift()!;
-      try {
-        const html = await fetchHtml(`${UAL_BASE}/player/?player_id=${id}`);
-        const height = parsePlayerHeight(html);
-        updates.push({ id, height });
-        if (height != null) found++;
-      } catch {
-        failures++;
-      }
-      done++;
-      if (done % 250 === 0) {
-        console.log(`progress: ${done}/${ids.length} fetched, ${found} heights found`);
-        // flush in batches so a crash doesn't lose everything
-        await flush();
-      }
-      await new Promise((r) => setTimeout(r, 120));
+  const heights = new Map<number, number>();
+  for (const show of ["tpl", "spl"]) {
+    const html = await fetchHtml(
+      `${process.env.UAL_BASE ?? "https://www.ultimatealeague.com"}/statistics/player/?type=pl&show=${show}`,
+    );
+    // rows: <td>player link</td><td>club</td><td>club</td><td>nationality</td><td>NN cm</td>
+    const rowRe =
+      /player_id=(\d+)[\s\S]*?<\/tr>/g;
+    let m: RegExpExecArray | null;
+    while ((m = rowRe.exec(html)) !== null) {
+      const playerId = Number(m[1]);
+      const heightMatch = m[0].match(/(\d{2,3})\s*cm/i);
+      if (!heightMatch) continue;
+      const height = Number(heightMatch[1]);
+      if (height < 140 || height > 230) continue;
+      heights.set(playerId, height);
     }
   }
 
-  async function flush() {
-    for (const u of updates.splice(0)) {
-      const { error } = await supabase.from("players").update({ height: u.height }).eq("id", u.id);
-      if (error) throw new Error(`update player ${u.id}: ${error.message}`);
-    }
+  console.log(`players with a valid height: ${heights.size}`);
+  const buckets = new Map<string, number>();
+  for (const h of heights.values()) {
+    const k = h >= 190 ? "190cm+" : h <= 170 ? "170cm-" : "171-189";
+    buckets.set(k, (buckets.get(k) ?? 0) + 1);
   }
+  console.log("distribution:", [...buckets.entries()]);
 
-  const queue = [...ids];
-  await Promise.all(Array.from({ length: concurrency }, () => worker(queue)));
-  await flush();
-
-  console.log(`done: ${done} pages, ${found} heights stored, ${failures} fetch failures`);
+  let updated = 0;
+  for (const [id, height] of heights) {
+    const { error } = await supabase.from("players").update({ height }).eq("id", id);
+    if (error) throw new Error(`update player ${id}: ${error.message}`);
+    updated++;
+  }
+  console.log(`updated ${updated} players`);
 }
 
 main().catch((e) => {
