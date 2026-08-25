@@ -33,8 +33,8 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   nationality: "Nationality",
   position: "Position",
   own_goals: "Own Goals",
-  finals_goals: "Finals Goals",
-  finals_apps: "Finals Apps",
+  finals_goals: "Finals Goals (career)",
+  finals_apps: "Finals Apps (career)",
   height: "Height",
 };
 
@@ -108,8 +108,6 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
     { label: "50+", min: 50, max: Infinity },
   ],
   clean_sheets: [
-    { label: "Under 5", min: 0, max: 4 },
-    { label: "Under 10", min: 0, max: 9 },
     { label: "10-50", min: 10, max: 50 },
     { label: "10+", min: 10, max: Infinity },
     { label: "25+", min: 25, max: Infinity },

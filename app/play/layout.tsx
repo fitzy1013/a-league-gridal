@@ -12,6 +12,9 @@ export default function PlayLayout({ children }: { children: React.ReactNode }) 
           </Link>
           <Link href="/play/daily">Daily</Link>
           {isDev && <Link href="/play/unlimited">Unlimited</Link>}
+          <Link href="/play/rules" className="ml-auto text-muted-foreground">
+            Rules
+          </Link>
         </div>
       </nav>
       <div className="flex w-full max-w-5xl flex-1 flex-col p-5">{children}</div>
