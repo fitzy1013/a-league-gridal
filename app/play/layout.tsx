@@ -1,14 +1,8 @@
+import { Suspense } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import { isTodaysGridV2 } from "@/lib/db/queries";
+import { RulesNav } from "./rules-nav";
 
-export default async function PlayLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const supabase = await createClient();
-  const rulesLive = await isTodaysGridV2(supabase);
+export default function PlayLayout({ children }: { children: React.ReactNode }) {
   const isDev = process.env.NODE_ENV === "development";
 
   return (
@@ -20,11 +14,9 @@ export default async function PlayLayout({
           </Link>
           <Link href="/play/daily">Daily</Link>
           {isDev && <Link href="/play/unlimited">Unlimited</Link>}
-          {rulesLive && (
-            <Link href="/play/rules" className="ml-auto text-muted-foreground">
-              Rules
-            </Link>
-          )}
+          <Suspense fallback={null}>
+            <RulesNav />
+          </Suspense>
         </div>
       </nav>
       <div className="flex w-full max-w-5xl flex-1 flex-col p-5">{children}</div>

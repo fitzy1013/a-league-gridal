@@ -2,6 +2,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { isTodaysGridV2 } from "@/lib/db/queries";
 
+// Depends on today's live grid ruleset — render per request.
+export const instant = false;
+
 export const metadata = {
   title: "How to Play — A-League Grid",
 };
