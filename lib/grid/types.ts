@@ -53,6 +53,9 @@ export const PAIR_AWARE_CATEGORIES: BandedCategory[] = [
   "red_cards",
   "win_pct",
   "debut_age",
+  "clean_sheets",
+  "minutes",
+  "championships",
 ];
 
 export function isPairAwareCategory(category: Category): boolean {

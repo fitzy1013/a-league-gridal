@@ -45,16 +45,17 @@ export async function POST(request: NextRequest) {
   let cTypes = body.colTypes;
   let rValues = body.rowValues;
   let cValues = body.colValues;
+  let gridRow: Awaited<ReturnType<typeof getGrid>> | null = null;
 
   if (typeof gridId === "string" && gridId) {
-    const grid = await getGrid(supabase, gridId);
-    if (!grid) {
+    gridRow = await getGrid(supabase, gridId);
+    if (!gridRow) {
       return NextResponse.json({ error: "grid not found" }, { status: 404 });
     }
-    rTypes = JSON.parse(grid.row_type) as Category[];
-    cTypes = JSON.parse(grid.col_type) as Category[];
-    rValues = grid.row_values as string[];
-    cValues = grid.col_values as string[];
+    rTypes = JSON.parse(gridRow.row_type) as Category[];
+    cTypes = JSON.parse(gridRow.col_type) as Category[];
+    rValues = gridRow.row_values as string[];
+    cValues = gridRow.col_values as string[];
   }
 
   if (
@@ -73,19 +74,21 @@ export async function POST(request: NextRequest) {
   }
 
   // Club x pair-aware-stat cells are checked jointly: the stat band must be
-  // met with the stats recorded at that club, not career-wide. Every other
-  // combination is two independent axis checks.
+  // met with the stats recorded at that club, not career-wide. Grids stamped
+  // with an older ruleset keep their original career-wide semantics. Every
+  // other combination is two independent axis checks.
   const rowType = rTypes[rowIdx!];
   const colType = cTypes[colIdx!];
   const rowValue = rValues[rowIdx!];
   const colValue = cValues[colIdx!];
-  let correct: boolean;
+  const legacyPairing =
+    typeof gridId === "string" && gridId ? (gridRow?.ruleset ?? "legacy") !== "v2" : false;  let correct: boolean;
   let hint: string | null = null;
 
   const clubAxis =
-    rowType === "club" && isPairAwareCategory(colType)
+    !legacyPairing && rowType === "club" && isPairAwareCategory(colType)
       ? { clubName: rowValue, statCat: colType as BandedCategory, statLabel: colValue, onRow: true }
-      : colType === "club" && isPairAwareCategory(rowType)
+      : !legacyPairing && colType === "club" && isPairAwareCategory(rowType)
         ? { clubName: colValue, statCat: rowType as BandedCategory, statLabel: rowValue, onRow: false }
         : null;
 

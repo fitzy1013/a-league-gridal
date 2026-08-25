@@ -55,6 +55,8 @@ export interface BuildDatasetOptions {
   stats: SeasonStatRow[];
   /** ids of clubs that have won at least one A-League Championship */
   championClubIds: number[];
+  /** season-level Championship winners: club id -> winning seasons */
+  championshipSeasons?: Map<number, Set<string>>;
 }
 
 /**
@@ -235,18 +237,35 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
       pc.goals != null ||
       pc.yellow_cards != null ||
       pc.red_cards != null ||
-      pc.wins != null;
+      pc.wins != null ||
+      pc.clean_sheets != null ||
+      pc.minutes != null;
     if (!hasStats) continue;
     addClubBand(pc.club_id, "appearances", pc.appearances ?? 0, pc.player_id);
     addClubBand(pc.club_id, "goals", pc.goals ?? 0, pc.player_id);
     addClubBand(pc.club_id, "yellow_cards", pc.yellow_cards ?? 0, pc.player_id);
     addClubBand(pc.club_id, "red_cards", pc.red_cards ?? 0, pc.player_id);
+    if (pc.clean_sheets != null) {
+      addClubBand(pc.club_id, "clean_sheets", pc.clean_sheets, pc.player_id);
+    }
+    if (pc.minutes != null) {
+      addClubBand(pc.club_id, "minutes", pc.minutes, pc.player_id);
+    }
     if (pc.debut_age != null) {
       addClubBand(pc.club_id, "debut_age", pc.debut_age, pc.player_id);
     }
     const clubApps = pc.appearances ?? 0;
     if (pc.wins != null && clubApps >= WIN_PCT_MIN_APPEARANCES) {
       addClubBand(pc.club_id, "win_pct", (pc.wins / clubApps) * 100, pc.player_id);
+    }
+    // Championships at THIS club: overlap of the player's tenure seasons with
+    // the club's championship-winning seasons.
+    const champSeasons = opts.championshipSeasons?.get(pc.club_id);
+    if (champSeasons && pc.seasons) {
+      const overlap = pc.seasons
+        .split(",")
+        .filter((s) => champSeasons.has(s.trim())).length;
+      addClubBand(pc.club_id, "championships", overlap, pc.player_id);
     }
   }
 

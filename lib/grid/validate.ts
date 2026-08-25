@@ -189,7 +189,7 @@ export async function playerSatisfiesClubStatCell(
   if (!club) return false;
   const { data: row } = await db
     .from("player_clubs")
-    .select("appearances,goals,yellow_cards,red_cards,wins,debut_age")
+    .select("appearances,goals,yellow_cards,red_cards,wins,debut_age,clean_sheets,minutes,seasons")
     .eq("player_id", playerId)
     .eq("club_id", club.id)
     .maybeSingle();
@@ -203,6 +203,37 @@ export async function playerSatisfiesClubStatCell(
       return (
         row.debut_age != null && row.debut_age >= band.min && row.debut_age <= band.max
       );
+    case "clean_sheets": {
+      if (band.label !== "Under 5" && row.clean_sheets == null) return false;
+      const v = row.clean_sheets ?? 0;
+      return v >= band.min && v <= band.max;
+    }
+    case "minutes": {
+      if (band.label !== "Under 1000" && row.minutes == null) return false;
+      const v = row.minutes ?? 0;
+      return v >= band.min && v <= band.max;
+    }
+    case "championships": {
+      // Overlap of tenure seasons at this club with its title-winning seasons.
+      const { data: champRows } = await db
+        .from("championship_seasons")
+        .select("season")
+        .eq("club_id", club.id);
+      const winning = new Set(
+        ((champRows ?? []) as { season: string }[]).map((r) => r.season),
+      );
+      const tenure = new Set(
+        String(row.seasons ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      );
+      let overlap = 0;
+      for (const s of tenure) {
+        if (winning.has(s)) overlap++;
+      }
+      return overlap >= band.min && overlap <= band.max;
+    }
     case "win_pct": {
       if (row.wins == null) return false;
       const apps = row.appearances ?? 0;

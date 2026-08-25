@@ -15,6 +15,9 @@ export interface CellAnswers {
  * membership (e.g. "Melbourne Victory x 20+ Goals" = 20+ goals FOR Victory),
  * while stat x stat cells are career-level intersections.
  *
+ * `legacyPairing` forces plain career-wide intersections for grids generated
+ * before per-club pairing existed (ruleset != 'v2').
+ *
  * Used by the /api/cell-answers endpoint and the /answers page (live DB
  * queries, not the answer key).
  */
@@ -24,6 +27,7 @@ export function cellAnswers(
   rowValue: string,
   colType: Category,
   colValue: string,
+  legacyPairing = false,
 ): { ids: Set<number>; names: Map<number, string> } {
   const rowKey = resolveCriterionLabel(dataset, rowType, rowValue);
   const colKey = resolveCriterionLabel(dataset, colType, colValue);
@@ -33,14 +37,26 @@ export function cellAnswers(
     colKey === null ? new Set<number>() : dataset.members[colType].get(colKey) ?? new Set();
 
   let ids: Set<number>;
-  if (rowType === "club" && colKey !== null && isPairAwareCategory(colType)) {
-    ids =
+  if (
+    !legacyPairing &&
+    rowType === "club" &&
+    colKey !== null &&
+    isPairAwareCategory(colType)
+  ) {
+    ids = new Set(
       dataset.clubStatMembers.get(clubStatKey(rowKey!, colType as BandedCategory, colKey)) ??
-      new Set();
-  } else if (colType === "club" && rowKey !== null && isPairAwareCategory(rowType)) {
-    ids =
+        [],
+    );
+  } else if (
+    !legacyPairing &&
+    colType === "club" &&
+    rowKey !== null &&
+    isPairAwareCategory(rowType)
+  ) {
+    ids = new Set(
       dataset.clubStatMembers.get(clubStatKey(colKey!, rowType as BandedCategory, rowKey)) ??
-      new Set();
+        [],
+    );
   } else {
     const [small, large] = rowSet.size <= colSet.size ? [rowSet, colSet] : [colSet, rowSet];
     ids = new Set<number>();

@@ -29,6 +29,8 @@ export async function POST(request: NextRequest) {
   let cTypes = body.colTypes;
   let rValues = body.rowValues;
   let cValues = body.colValues;
+  // Grids generated before per-club pairing keep career-wide semantics.
+  let legacyPairing = false;
 
   if (typeof body.gridId === "string" && body.gridId) {
     const { getGrid } = await import("@/lib/db/queries");
@@ -40,6 +42,7 @@ export async function POST(request: NextRequest) {
     cTypes = JSON.parse(grid.col_type) as Category[];
     rValues = grid.row_values as string[];
     cValues = grid.col_values as string[];
+    legacyPairing = grid.ruleset !== "v2";
   }
 
   if (
@@ -65,7 +68,14 @@ export async function POST(request: NextRequest) {
   const dataset = await loadGridDataset(supabase);
 
   const cells = wanted.map(([r, c]) => {
-    const { ids, names } = cellAnswers(dataset, rTypes![r], rValues![r], cTypes![c], cValues![c]);
+    const { ids, names } = cellAnswers(
+      dataset,
+      rTypes![r],
+      rValues![r],
+      cTypes![c],
+      cValues![c],
+      legacyPairing,
+    );
     const players = [...ids]
       .sort((a, b) => (names.get(a) ?? "").localeCompare(names.get(b) ?? ""))
       .map((id) => ({ id, name: names.get(id) ?? "Unknown" }));

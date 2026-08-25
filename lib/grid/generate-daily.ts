@@ -175,6 +175,7 @@ export async function storeDailyGrid(
     row_values: grid.rowValues,
     col_values: grid.colValues,
     solution: grid.solution,
+    ruleset: "v2",
   };
   const { error } = await supabase.from("grids").upsert(row, { onConflict: "date" });
   if (error) throw new Error(`upsert grid: ${error.message}`);

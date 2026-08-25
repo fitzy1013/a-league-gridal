@@ -1,6 +1,7 @@
 import { createAdminClient } from "../db/supabase-admin";
 import {
   parseAllPlayersPage,
+  parseChampionshipSeasons,
   parseGeneralPage,
   parsePlayerStatsPage,
   parseSingleValueStats,
@@ -243,6 +244,20 @@ export async function runScrape(): Promise<ScrapeResult> {
     season: "All",
     count: t.count,
   })), "club_id,title,season");
+
+  // Season-level Championship winners (achievements ?show=ch).
+  const { error: csDelErr } = await supabase
+    .from("championship_seasons")
+    .delete()
+    .neq("club_id", 0);
+  if (csDelErr) throw new Error(`clear championship_seasons: ${csDelErr.message}`);
+  const champRows = parseChampionshipSeasons(
+    await fetchHtml(`${achievementsUrl()}?show=ch`),
+  ).flatMap((c) => c.seasons.map((season) => ({ club_id: c.clubId, season })));
+  if (champRows.length > 0) {
+    await upsertChunked(supabase, "championship_seasons", champRows, "club_id,season");
+  }
+  log.push(`championship seasons: ${champRows.length}`);
 
   log.push(`player_clubs: ${clubRows.size}`);
   log.push(`duration: ${Date.now() - startedAt}ms`);

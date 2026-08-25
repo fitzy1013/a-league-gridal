@@ -26,6 +26,14 @@ export interface PlayerClubRow {
   red_cards: number | null;
   wins: number | null;
   debut_age: number | null;
+  clean_sheets: number | null;
+  minutes: number | null;
+  seasons: string | null;
+}
+
+export interface ChampionshipSeasonRow {
+  club_id: number;
+  season: string;
 }
 
 export interface SeasonStatRow {
@@ -54,6 +62,8 @@ export interface GridRow {
   col_values: unknown;
   solution: unknown;
   created_at: string;
+  /** 'legacy' = career-wide pairing, 'v2' = per-club stat pairing */
+  ruleset?: string | null;
 }
 
 export interface UserResultRow {
@@ -123,10 +133,23 @@ export async function loadPlayers(client: SupabaseClient): Promise<PlayerRow[]> 
 }
 
 export async function loadPlayerClubs(client: SupabaseClient): Promise<PlayerClubRow[]> {
-  // Prefer per-club stat columns; fall back gracefully when the
-  // 0004_per_club_stats migration hasn't been applied yet.
-  const withStats = await fetchPage("player_id,club_id,appearances,goals,yellow_cards,red_cards,wins,debut_age");
-  if (withStats) return withStats;
+  // Prefer the full column set; fall back gracefully when later migrations
+  // haven't been applied yet.
+  const full = await fetchPage(
+    "player_id,club_id,appearances,goals,yellow_cards,red_cards,wins,debut_age,clean_sheets,minutes,seasons",
+  );
+  if (full) return full;
+  const mid = await fetchPage(
+    "player_id,club_id,appearances,goals,yellow_cards,red_cards,wins,debut_age",
+  );
+  if (mid) {
+    return mid.map((r) => ({
+      ...r,
+      clean_sheets: null,
+      minutes: null,
+      seasons: null,
+    }));
+  }
   return (
     (await fetchPage("player_id,club_id,wins,debut_age"))?.map((r) => ({
       ...(r as PlayerClubRow),
@@ -134,6 +157,9 @@ export async function loadPlayerClubs(client: SupabaseClient): Promise<PlayerClu
       goals: null,
       yellow_cards: null,
       red_cards: null,
+      clean_sheets: null,
+      minutes: null,
+      seasons: null,
     })) ?? []
   );
 
@@ -146,7 +172,9 @@ export async function loadPlayerClubs(client: SupabaseClient): Promise<PlayerClu
           .range(from, to) as unknown as PromiseLike<PageResult<PlayerClubRow>>,
       );
     } catch (e) {
-      if (/appearances/.test(e instanceof Error ? e.message : "")) return null;
+      if (/clean_sheets|seasons|appearances/.test(e instanceof Error ? e.message : "")) {
+        return null;
+      }
       throw e;
     }
   }
@@ -200,6 +228,31 @@ export async function loadChampionClubIds(client: SupabaseClient): Promise<numbe
     .eq("title", "Championship");
   if (error) throw new Error(`load champion clubs: ${error.message}`);
   return [...new Set((data ?? []).map((r) => r.club_id))];
+}
+
+/** Season-level Championship winners: club_id -> winning seasons. */
+export async function loadChampionshipSeasons(
+  client: SupabaseClient,
+): Promise<Map<number, Set<string>>> {
+  const out = new Map<number, Set<string>>();
+  try {
+    const { data, error } = await client
+      .from("championship_seasons")
+      .select("club_id,season")
+      .range(0, 99999);
+    if (error) throw new Error(error.message);
+    for (const r of data ?? []) {
+      let set = out.get(r.club_id);
+      if (!set) {
+        set = new Set<string>();
+        out.set(r.club_id, set);
+      }
+      set.add(r.season);
+    }
+  } catch {
+    // table missing pre-migration — championships stay career-level only
+  }
+  return out;
 }
 
 export async function getTodayGrid(

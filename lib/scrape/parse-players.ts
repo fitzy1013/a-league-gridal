@@ -237,3 +237,94 @@ export function parsePlayerHeight(html: string): number | null {
   const match = html.match(/is\s+(\d{2,3})\s*cm\s+tall/i);
   return match ? Number(match[1]) : null;
 }
+
+export interface ParsedHistoryRow {
+  season: string;
+  clubIds: number[];
+  gp: number | null;
+  started: number | null;
+  minutes: number | null;
+  goals: number | null;
+  /** Clean sheets � only present on goalkeeper-style tables. */
+  cs: number | null;
+  yc: number | null;
+  rc: number | null;
+}
+
+/**
+ * Parses a player profile's History table:
+ * Season | Club(s) x2 | GP | Started | Mins | Goals | Gls|CS | YC | RC.
+ * Outfield tables carry a duplicate "Gls" icon column where goalkeepers
+ * carry "CS"; cs is null on outfield rows.
+ */
+export function parsePlayerHistory(html: string): ParsedHistoryRow[] {
+  const $ = cheerio.load(html);
+  const result: ParsedHistoryRow[] = [];
+  const gkTable = /<abbr title="Clean Sheets">/.test(html);
+
+  $("#player-seasons-data-table tbody tr").each((_, tr) => {
+    const tds = $(tr).find("td");
+    if (tds.length < 9) return;
+
+    const season = $(tds[0]).text().trim();
+    if (!/^\d{4}-\d{2}$/.test(season)) return;
+
+    const clubIds: number[] = [];
+    $(tds[1])
+      .find("a")
+      .each((_, a) => {
+        const match = ($(a).attr("href") ?? "").match(/club_id=(\d+)/);
+        if (match && !clubIds.includes(Number(match[1]))) {
+          clubIds.push(Number(match[1]));
+        }
+      });
+    if (clubIds.length === 0) return;
+
+    const nums: (number | null)[] = [];
+    for (let i = 3; i < tds.length; i++) {
+      nums.push(parseIntCell($(tds[i]).text()) ?? null);
+    }
+
+    result.push({
+      season,
+      clubIds,
+      gp: nums[0] ?? null,
+      started: nums[1] ?? null,
+      minutes: nums[2] ?? null,
+      goals: nums[3] ?? null,
+      cs: gkTable ? (nums[4] ?? null) : null,
+      yc: nums[5] ?? null,
+      rc: nums[6] ?? null,
+    });
+  });
+
+  return result;
+}
+
+/**
+ * Parses the achievements page filtered to Championships (?show=ch):
+ * Club | Club | Total | "2005-06 , 2009-10 , ..." � season-level title data.
+ */
+export function parseChampionshipSeasons(
+  html: string,
+): { clubId: number; seasons: string[] }[] {
+  const $ = cheerio.load(html);
+  const result: { clubId: number; seasons: string[] }[] = [];
+
+  $("#statistics-data-table tbody tr").each((_, tr) => {
+    const tds = $(tr).find("td");
+    if (tds.length < 4) return;
+
+    const clubLink = $(tds[0]).find("a").first();
+    const match = (clubLink.attr("href") ?? "").match(/club_id=(\d+)/);
+    if (!match) return;
+
+    const seasonsText = $(tds[3]).text();
+    const seasons = [...seasonsText.matchAll(/(\d{4}-\d{2})/g)].map((m) => m[1]);
+    if (seasons.length > 0) {
+      result.push({ clubId: Number(match[1]), seasons });
+    }
+  });
+
+  return result;
+}

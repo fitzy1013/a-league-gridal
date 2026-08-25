@@ -104,6 +104,9 @@ const playerClubs = new Map<
     red_cards: number | null;
     wins: number | null;
     debut_age: number | null;
+    clean_sheets: number | null;
+    minutes: number | null;
+    seasons: string | null;
   }
 >();
 for (const p of playerRows.values()) {
@@ -117,6 +120,9 @@ for (const p of playerRows.values()) {
       red_cards: null,
       wins: null,
       debut_age: null,
+      clean_sheets: null,
+      minutes: null,
+      seasons: null,
     });
   }
 }
@@ -133,6 +139,9 @@ for (const row of pl) {
         red_cards: null,
         wins: null,
         debut_age: null,
+        clean_sheets: null,
+        minutes: null,
+        seasons: null,
       });
     }
   }
@@ -149,6 +158,9 @@ for (const m of mvMembers) {
       red_cards: m.clubRedCards ?? null,
       wins: m.wins ?? null,
       debut_age: m.debutAge ?? null,
+      clean_sheets: null,
+      minutes: null,
+      seasons: null,
     });
   }
   if (!playerRows.has(m.playerId)) {
