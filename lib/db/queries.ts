@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { todaySydneyDate } from "../dates";
 
 export interface ClubRow {
   id: number;
@@ -266,6 +267,15 @@ export async function getTodayGrid(
     .limit(1)
     .maybeSingle();
   return (data as GridRow | null) ?? null;
+}
+
+/**
+ * True when today's live grid was generated under the v2 ruleset (per-club
+ * stat pairing). Used to gate the rules page until the new semantics go live.
+ */
+export async function isTodaysGridV2(client: SupabaseClient): Promise<boolean> {
+  const grid = await getTodayGrid(client, todaySydneyDate());
+  return grid?.ruleset === "v2";
 }
 
 export async function getGrid(client: SupabaseClient, id: string): Promise<GridRow | null> {

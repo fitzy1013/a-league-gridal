@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import { isTodaysGridV2 } from "@/lib/db/queries";
 
 export const metadata = {
   title: "How to Play — A-League Grid",
@@ -23,7 +25,30 @@ const CAREER_ONLY = [
   ["Nationality / Position", "attributes of the player, unchanged by clubs"],
 ];
 
-export default function RulesPage() {
+export default async function RulesPage() {
+  const supabase = await createClient();
+  const live = await isTodaysGridV2(supabase);
+
+  if (!live) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">How to Play</h1>
+        <p className="text-sm text-muted-foreground">
+          The full rules go live with tomorrow&apos;s grid, alongside some
+          changes to how club-based criteria work. Check back after midnight!
+        </p>
+        <div>
+          <Link
+            href="/play/daily"
+            className="text-sm font-medium underline underline-offset-4"
+          >
+            ← Back to today&apos;s grid
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">How to Play</h1>

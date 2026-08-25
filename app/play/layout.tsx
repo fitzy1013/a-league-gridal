@@ -1,6 +1,14 @@
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import { isTodaysGridV2 } from "@/lib/db/queries";
 
-export default function PlayLayout({ children }: { children: React.ReactNode }) {
+export default async function PlayLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const supabase = await createClient();
+  const rulesLive = await isTodaysGridV2(supabase);
   const isDev = process.env.NODE_ENV === "development";
 
   return (
@@ -12,9 +20,11 @@ export default function PlayLayout({ children }: { children: React.ReactNode }) 
           </Link>
           <Link href="/play/daily">Daily</Link>
           {isDev && <Link href="/play/unlimited">Unlimited</Link>}
-          <Link href="/play/rules" className="ml-auto text-muted-foreground">
-            Rules
-          </Link>
+          {rulesLive && (
+            <Link href="/play/rules" className="ml-auto text-muted-foreground">
+              Rules
+            </Link>
+          )}
         </div>
       </nav>
       <div className="flex w-full max-w-5xl flex-1 flex-col p-5">{children}</div>
