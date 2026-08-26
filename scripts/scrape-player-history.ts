@@ -34,6 +34,7 @@ async function main() {
   let done = 0;
   let failures = 0;
   let rowsWritten = 0;
+  const failed: { id: number; message: string }[] = [];
 
   async function flush(
     agg: Map<
@@ -79,8 +80,12 @@ async function main() {
             if (row.cs != null) a.cs = (a.cs ?? 0) + row.cs;
           }
         }
-      } catch {
+      } catch (e) {
         failures++;
+        failed.push({
+          id,
+          message: e instanceof Error ? e.message : String(e),
+        });
       }
       done++;
       if (done % 250 === 0) {
@@ -96,6 +101,12 @@ async function main() {
   await Promise.all(Array.from({ length: concurrency }, () => worker(queue)));
 
   console.log(`done: ${done} profiles, failures ${failures}, membership rows updated ${rowsWritten}`);
+  if (failed.length > 0) {
+    console.log("\nfailed players (rerun the script to retry):");
+    for (const f of failed) {
+      console.log(`  player_id=${f.id}: ${f.message}`);
+    }
+  }
 }
 
 main().catch((e) => {

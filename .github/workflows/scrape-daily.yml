@@ -1,0 +1,52 @@
+name: Daily scrape
+
+# Runs all four scrapers 30 minutes before the daily-grid cron
+# (grid fires at 14:00 UTC = midnight Sydney).
+on:
+  schedule:
+    - cron: "30 13 */2 * *"
+  workflow_dispatch: {} # allows manual runs from the Actions tab
+
+# Never let two scrapes overlap.
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write env file
+        run: |
+          printf 'NEXT_PUBLIC_SUPABASE_URL=%s\n' "$NEXT_PUBLIC_SUPABASE_URL" > .env
+          printf 'SUPABASE_SERVICE_ROLE_KEY=%s\n' "$SUPABASE_SERVICE_ROLE_KEY" >> .env
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      - name: Main scrape (players, stats, memberships, titles, honours)
+        run: npx tsx scripts/run-scrape.ts
+        timeout-minutes: 5
+
+      - name: Player history crawl (tenure seasons, per-club CS + minutes)
+        run: npx tsx scripts/scrape-player-history.ts 4
+        timeout-minutes: 25
+
+      - name: Manager tenures
+        run: npx tsx scripts/scrape-managers.ts
+        timeout-minutes: 5
+
+      - name: Player heights
+        run: npx tsx scripts/scrape-heights.ts 4
+        timeout-minutes: 10

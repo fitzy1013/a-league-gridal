@@ -179,7 +179,7 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
     { label: "2021-22 or later", min: 2021, max: Infinity },
   ],
   mid_season: [
-    { label: "Yes", min: 1, max: Infinity },
+    { label: "2+ Clubs in One Season", min: 1, max: Infinity },
   ],
   one_club_stint: [
     { label: "3+", min: 3, max: Infinity },

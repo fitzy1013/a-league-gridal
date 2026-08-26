@@ -172,7 +172,7 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     for (const [, n] of seasonClubCount) {
       if (n > 1) midCount++;
     }
-    if (midCount > 0) addToMembers("mid_season", "Yes", pid);
+    if (midCount > 0) addToMembers("mid_season", "2+ Clubs in One Season", pid);
     for (const band of NUMERIC_BANDS.one_club_stint) {
       if (maxStint >= band.min && maxStint <= band.max) {
         addToMembers("one_club_stint", band.label, pid);
