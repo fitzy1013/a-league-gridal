@@ -104,6 +104,16 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
     [cells],
   );
 
+  // Players already correctly placed anywhere in the grid can't be reused.
+  const usedPlayerIds = useMemo(
+    () =>
+      cells
+        .flat()
+        .filter((c) => c.status === "correct" && c.playerId != null)
+        .map((c) => c.playerId as number),
+    [cells],
+  );
+
   const labelFor = (category: Category) => CATEGORY_LABELS[category];
 
   const openSummary = useCallback(async () => {
@@ -118,6 +128,10 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
 
   const applyGuess = async (r: number, c: number, player: PlayerOption) => {
     if (submitting || finished) return;
+    if (usedPlayerIds.includes(player.id)) {
+      setHint(`${player.name} has already been used in this grid — pick someone else.`);
+      return;
+    }
     setSubmitting(true);
     try {
       let isCorrect = false;
@@ -308,6 +322,7 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
           <GuessInput
             onSelect={(player) => applyGuess(selected.r, selected.c, player)}
             onClose={() => setSelected(null)}
+            excludeIds={usedPlayerIds}
           />
         </div>
       )}

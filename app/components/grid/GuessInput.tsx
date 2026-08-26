@@ -39,10 +39,14 @@ function filterPool(pool: PlayerOption[], query: string): PlayerOption[] {
 export default function GuessInput({
   onSelect,
   onClose,
+  excludeIds = [],
 }: {
   onSelect: (player: PlayerOption) => void;
   onClose: () => void;
+  /** Players already used in this grid — hidden from search and rejected. */
+  excludeIds?: number[];
 }) {
+  const excluded = new Set(excludeIds);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PlayerOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -103,16 +107,19 @@ export default function GuessInput({
       onClose();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActiveIndex((i) => Math.min(i + 1, results.length - 1));
+      setActiveIndex((i) => Math.min(i + 1, visibleResults.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setActiveIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const player = results[activeIndex];
+      const player = visibleResults[activeIndex];
       if (player) pick(player);
     }
   };
+
+  // Hide players already correctly used elsewhere in the grid.
+  const visibleResults = results.filter((p) => !excluded.has(p.id));
 
   return (
     <div className="relative">
@@ -131,9 +138,9 @@ export default function GuessInput({
         )}
       </div>
 
-      {results.length > 0 && (
+      {visibleResults.length > 0 && (
         <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md">
-          {results.map((player, i) => (
+          {visibleResults.map((player, i) => (
             <li key={player.id}>
               <button
                 type="button"
@@ -155,9 +162,11 @@ export default function GuessInput({
         </ul>
       )}
 
-      {!loading && query.trim().length >= 1 && results.length === 0 && (
+      {!loading && query.trim().length >= 1 && visibleResults.length === 0 && (
         <p className="mt-1 text-xs text-muted-foreground">
-          No players found for &ldquo;{query.trim()}&rdquo;
+          {results.length > 0
+            ? "Those players have already been used in this grid."
+            : `No players found for “${query.trim()}”`}
         </p>
       )}
     </div>
