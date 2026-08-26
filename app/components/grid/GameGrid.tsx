@@ -235,17 +235,19 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
 
       <div
         className="grid gap-1"
-        style={{ gridTemplateColumns: `auto repeat(${size}, minmax(0, 1fr))` }}
+        style={{
+          gridTemplateColumns: `minmax(3.25rem, 24vw) repeat(${size}, minmax(0, 1fr))`,
+        }}
       >
-        <div className="flex items-center justify-center rounded-md px-2 text-xs font-medium text-muted-foreground">
+        <div className="flex items-center justify-center rounded-md px-1 text-xs font-medium text-muted-foreground">
           {size}×{size}
         </div>
         {spec.colValues.map((value, c) => (
           <div
             key={`col-${c}`}
-            className="flex flex-col items-center justify-center rounded-md bg-accent px-2 py-2 text-center text-sm"
+            className="flex flex-col items-center justify-center break-words rounded-md bg-accent px-1 py-2 text-center text-xs sm:px-2 sm:text-sm"
           >
-            <span className="leading-tight">{value}</span>
+            <span className="leading-tight [overflow-wrap:anywhere]">{value}</span>
             {spec.colTypes[c] !== "club" && (
               <span className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                 {labelFor(spec.colTypes[c])}
@@ -259,8 +261,10 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
 
         {cells.map((row, r) => (
           <Fragment key={`row-${r}`}>
-            <div className="flex flex-col items-center justify-center rounded-md bg-accent px-2 py-2 text-center text-sm">
-              <span className="leading-tight">{spec.rowValues[r]}</span>
+            <div className="flex flex-col items-center justify-center break-words rounded-md bg-accent px-1 py-2 text-center text-xs sm:px-2 sm:text-sm">
+              <span className="leading-tight [overflow-wrap:anywhere]">
+                {spec.rowValues[r]}
+              </span>
               {spec.rowTypes[r] !== "club" && (
                 <span className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                   {labelFor(spec.rowTypes[r])}
