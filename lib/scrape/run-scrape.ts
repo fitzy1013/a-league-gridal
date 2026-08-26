@@ -99,12 +99,14 @@ export async function runScrape(): Promise<ScrapeResult> {
       }
       if (key === "finalsAppearances") existing.finalsAppearances ??= value;
       else if (key === "finalsGoals") existing.finalsGoals ??= value;
+      else if (key === "mostGoalsGame") existing.mostGoalsGame ??= value;
       else existing.ownGoals ??= value;
     }
   };
   applyShowStat("finalsAppearances", await fetchHtml(playerStatsShowUrl("pa", "fin")));
   applyShowStat("finalsGoals", await fetchHtml(playerStatsShowUrl("pg", "fin")));
   applyShowStat("ownGoals", await fetchHtml(playerStatsShowUrl("pg", "og")));
+  applyShowStat("mostGoalsGame", await fetchHtml(playerStatsShowUrl("pg", "sg")));
 
   // 4. General tab: multi-club history (all-time) ------------------------------
   const general = parseGeneralPage(await fetchHtml(generalStatsUrl("all")));
@@ -189,6 +191,7 @@ export async function runScrape(): Promise<ScrapeResult> {
     finals_appearances: s.finalsAppearances ?? null,
     finals_goals: s.finalsGoals ?? null,
     own_goals: s.ownGoals ?? null,
+    most_goals_game: s.mostGoalsGame ?? null,
     updated_at: now,
   })), "player_id,season");
 
@@ -258,6 +261,20 @@ export async function runScrape(): Promise<ScrapeResult> {
     await upsertChunked(supabase, "championship_seasons", champRows, "club_id,season");
   }
   log.push(`championship seasons: ${champRows.length}`);
+
+  // Season-level Premiership winners (achievements ?show=pr).
+  const { error: psDelErr } = await supabase
+    .from("premiership_seasons")
+    .delete()
+    .neq("club_id", 0);
+  if (psDelErr) throw new Error(`clear premiership_seasons: ${psDelErr.message}`);
+  const premRows = parseChampionshipSeasons(
+    await fetchHtml(`${achievementsUrl()}?show=pr`),
+  ).flatMap((c) => c.seasons.map((season) => ({ club_id: c.clubId, season })));
+  if (premRows.length > 0) {
+    await upsertChunked(supabase, "premiership_seasons", premRows, "club_id,season");
+  }
+  log.push(`premiership seasons: ${premRows.length}`);
 
   log.push(`player_clubs: ${clubRows.size}`);
   log.push(`duration: ${Date.now() - startedAt}ms`);

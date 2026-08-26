@@ -1,6 +1,76 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { bandForLabel, positionLabels, WIN_PCT_MIN_APPEARANCES } from "./labels";
-import type { BandedCategory, Category } from "./types";
+import type { BandedCategory, Category, NumericBand } from "./types";
+
+const AWARD_TITLES: Partial<Record<Category, string>> = {
+  golden_boot: "Golden Boot",
+  jw_medal: "Johnny Warren Medal",
+  marston_medal: "Joe Marston Medal",
+};
+
+function titleForAward(category: Category): string {
+  return AWARD_TITLES[category] ?? "";
+}
+
+/** Player's tenure seasons (from player_clubs.seasons). */
+async function playerSeasons(
+  db: SupabaseClient,
+  playerId: number,
+): Promise<Map<number, Set<string>>> {
+  const out = new Map<number, Set<string>>();
+  const { data } = await db
+    .from("player_clubs")
+    .select("club_id,seasons")
+    .eq("player_id", playerId);
+  for (const r of data ?? []) {
+    const set = new Set<string>();
+    for (const s of String(r.seasons ?? "").split(",")) {
+      const t = s.trim();
+      if (t) set.add(t);
+    }
+    if (set.size > 0) out.set(r.club_id, set);
+  }
+  return out;
+}
+
+async function playerHasSeasonInEra(
+  db: SupabaseClient,
+  playerId: number,
+  band: NumericBand,
+): Promise<boolean> {
+  const tenures = await playerSeasons(db, playerId);
+  for (const seasons of tenures.values()) {
+    for (const s of seasons) {
+      const y = Number(s.slice(0, 4));
+      if (y >= band.min && y <= band.max) return true;
+    }
+  }
+  return false;
+}
+
+/** Number of seasons the player was registered at more than one club. */
+async function midSeasonMoveCount(db: SupabaseClient, playerId: number): Promise<number> {
+  const tenures = await playerSeasons(db, playerId);
+  const seasonClubCount = new Map<string, number>();
+  for (const set of tenures.values()) {
+    for (const s of set) {
+      seasonClubCount.set(s, (seasonClubCount.get(s) ?? 0) + 1);
+    }
+  }
+  let n = 0;
+  for (const [, c] of seasonClubCount) {
+    if (c > 1) n++;
+  }
+  return n;
+}
+
+/** Longest stretch of distinct seasons at a single club. */
+async function longestSingleClubStint(db: SupabaseClient, playerId: number): Promise<number> {
+  const tenures = await playerSeasons(db, playerId);
+  let max = 0;
+  for (const set of tenures.values()) max = Math.max(max, set.size);
+  return max;
+}
 
 /**
  * Server-side check of whether a player satisfies a single category + display
@@ -149,6 +219,63 @@ export async function playerSatisfiesCriterion(
         }
       }
       return false;
+    }
+    case "premierships": {
+      const band = bandForLabel("premierships", displayLabel);
+      if (!band) return false;
+      // Distinct Premiership-winning clubs among the player's all-time clubs.
+      const { data: pcRows } = await db
+        .from("player_clubs")
+        .select("club_id")
+        .eq("player_id", playerId);
+      const clubIds = [...new Set((pcRows ?? []).map((r) => r.club_id))];
+      if (clubIds.length === 0) return false;
+      const { count } = await db
+        .from("premiership_seasons")
+        .select("club_id", { count: "exact", head: true })
+        .in("club_id", clubIds);
+      const n = count ?? 0;
+      return n >= band.min && n <= band.max;
+    }
+    case "golden_boot":
+    case "jw_medal":
+    case "marston_medal": {
+      const band = bandForLabel(category, displayLabel);
+      if (!band) return false;
+      const { count } = await db
+        .from("player_titles")
+        .select("title", { count: "exact", head: true })
+        .eq("player_id", playerId)
+        .eq("title", titleForAward(category));
+      return (count ?? 0) >= band.min && (count ?? 0) <= band.max;
+    }
+    case "era": {
+      const band = bandForLabel("era", displayLabel);
+      if (!band) return false;
+      return playerHasSeasonInEra(db, playerId, band);
+    }
+    case "mid_season": {
+      const band = bandForLabel("mid_season", displayLabel);
+      if (!band) return false;
+      return (await midSeasonMoveCount(db, playerId)) >= band.min;
+    }
+    case "one_club_stint": {
+      const band = bandForLabel("one_club_stint", displayLabel);
+      if (!band) return false;
+      const v = await longestSingleClubStint(db, playerId);
+      return v >= band.min && v <= band.max;
+    }
+    case "multi_goal_game": {
+      const band = bandForLabel("multi_goal_game", displayLabel);
+      if (!band) return false;
+      const { data: stat } = await db
+        .from("player_season_stats")
+        .select("most_goals_game")
+        .eq("player_id", playerId)
+        .eq("season", "all")
+        .maybeSingle();
+      const v = stat?.most_goals_game ?? 0;
+      return v >= band.min && v <= band.max;
     }
     case "appearances":
     case "goals":
@@ -402,6 +529,67 @@ export async function describeStatValue(
         default:
           return null;
       }
+    }
+    case "golden_boot":
+    case "jw_medal":
+    case "marston_medal": {
+      const label =
+        category === "golden_boot"
+          ? "Golden Boot"
+          : category === "jw_medal"
+            ? "Johnny Warren Medal"
+            : "Joe Marston Medal";
+      const { count } = await db
+        .from("player_titles")
+        .select("title", { count: "exact", head: true })
+        .eq("player_id", playerId)
+        .eq("title", label);
+      return `${playerName} won ${count ?? 0} ${label} award${plural(count ?? 0)}`;
+    }
+    case "premierships": {
+      const { data: pcRows } = await db
+        .from("player_clubs")
+        .select("club_id")
+        .eq("player_id", playerId);
+      const clubIds = [...new Set((pcRows ?? []).map((r) => r.club_id))];
+      if (clubIds.length === 0) return `${playerName} played for no Premiership-winning clubs`;
+      const { count } = await db
+        .from("premiership_seasons")
+        .select("club_id", { count: "exact", head: true })
+        .in("club_id", clubIds);
+      return `${playerName} played for ${count ?? 0} Premiership-winning club${plural(count ?? 0)}`;
+    }
+    case "era": {
+      const tenures = await playerSeasons(db, playerId);
+      let earliest: string | null = null;
+      for (const seasons of tenures.values()) {
+        for (const s of seasons) {
+          if (earliest === null || s < earliest) earliest = s;
+        }
+      }
+      return earliest
+        ? `${playerName}'s first A-League season was ${earliest}`
+        : `${playerName} has no seasons recorded`;
+    }
+    case "mid_season": {
+      const n = await midSeasonMoveCount(db, playerId);
+      return `${playerName} changed clubs mid-season ${n} time${plural(n)}`;
+    }
+    case "one_club_stint": {
+      const tenures = await playerSeasons(db, playerId);
+      let max = 0;
+      for (const set of tenures.values()) max = Math.max(max, set.size);
+      return `${playerName}'s longest spell at one club was ${max} season${plural(max)}`;
+    }
+    case "multi_goal_game": {
+      const { data: stat } = await db
+        .from("player_season_stats")
+        .select("most_goals_game")
+        .eq("player_id", playerId)
+        .eq("season", "all")
+        .maybeSingle();
+      const v = stat?.most_goals_game ?? 0;
+      return `${playerName}'s best game returned ${v} goal${plural(v)}`;
     }
     case "win_pct": {
       const { data: stat } = await db

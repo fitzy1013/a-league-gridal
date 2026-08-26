@@ -57,6 +57,10 @@ export interface BuildDatasetOptions {
   championClubIds: number[];
   /** season-level Championship winners: club id -> winning seasons */
   championshipSeasons?: Map<number, Set<string>>;
+  /** season-level Premiership winners: club id -> winning seasons */
+  premiershipSeasons?: Map<number, Set<string>>;
+  /** individual award rows: one per player-title pairing */
+  playerAwardRows?: { player_id: number; title: string }[];
   /** manager tenures: one row per manager-club-season */
   managerSeasons?: {
     managerId: number;
@@ -90,6 +94,14 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     finals_apps: new Map(),
     height: new Map(),
     managed_by: new Map(),
+    golden_boot: new Map(),
+    jw_medal: new Map(),
+    marston_medal: new Map(),
+    premierships: new Map(),
+    era: new Map(),
+    mid_season: new Map(),
+    one_club_stint: new Map(),
+    multi_goal_game: new Map(),
   };
   const clubStatMembers = new Map<string, Set<number>>();
 
@@ -124,6 +136,57 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     clubCounts.set(pc.player_id, (clubCounts.get(pc.player_id) ?? 0) + 1);
   }
 
+  // Tenure seasons per player per club (from profile History tables).
+  const tenureSeasons = new Map<number, Map<number, Set<string>>>();
+  for (const pc of opts.playerClubs) {
+    if (!pc.seasons) continue;
+    let byClub = tenureSeasons.get(pc.player_id);
+    if (!byClub) {
+      byClub = new Map();
+      tenureSeasons.set(pc.player_id, byClub);
+    }
+    let set = byClub.get(pc.club_id);
+    if (!set) {
+      set = new Set<string>();
+      byClub.set(pc.club_id, set);
+    }
+    for (const s of pc.seasons.split(",")) {
+      const t = s.trim();
+      if (t) set.add(t);
+    }
+  }
+
+  // Era / mid-season moves / longest single-club stint.
+  for (const [pid, byClub] of tenureSeasons) {
+    const allSeasons = new Set<string>();
+    const seasonClubCount = new Map<string, number>();
+    let maxStint = 0;
+    for (const set of byClub.values()) {
+      maxStint = Math.max(maxStint, set.size);
+      for (const s of set) {
+        allSeasons.add(s);
+        seasonClubCount.set(s, (seasonClubCount.get(s) ?? 0) + 1);
+      }
+    }
+    let midCount = 0;
+    for (const [, n] of seasonClubCount) {
+      if (n > 1) midCount++;
+    }
+    if (midCount > 0) addToMembers("mid_season", "Yes", pid);
+    for (const band of NUMERIC_BANDS.one_club_stint) {
+      if (maxStint >= band.min && maxStint <= band.max) {
+        addToMembers("one_club_stint", band.label, pid);
+      }
+    }
+    for (const band of NUMERIC_BANDS.era) {
+      const inBand = [...allSeasons].some((s) => {
+        const y = Number(s.slice(0, 4));
+        return y >= band.min && y <= band.max;
+      });
+      if (inBand) addToMembers("era", band.label, pid);
+    }
+  }
+
   // Championships: distinct Championship-winning clubs among the player's
   // all-time clubs (player-level ring counts aren't published by UAL).
   const championClubSet = new Set(opts.championClubIds);
@@ -131,6 +194,22 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
   for (const pc of opts.playerClubs) {
     if (!championClubSet.has(pc.club_id)) continue;
     championClubCounts.set(pc.player_id, (championClubCounts.get(pc.player_id) ?? 0) + 1);
+  }
+
+  // Premierships: same construction against Premiership-winning seasons.
+  const premiershipSeasonSets = opts.premiershipSeasons ?? new Map<number, Set<string>>();
+  const premiershipClubSet = new Set(premiershipSeasonSets.keys());
+  const premiershipClubCounts = new Map<number, number>();
+  for (const pc of opts.playerClubs) {
+    if (!premiershipClubSet.has(pc.club_id)) continue;
+    premiershipClubCounts.set(pc.player_id, (premiershipClubCounts.get(pc.player_id) ?? 0) + 1);
+  }
+
+  // Individual awards (Golden Boot / Johnny Warren / Joe Marston).
+  const awardCountBy = new Map<string, number>(); // `${playerId}:${title}` -> count
+  for (const row of opts.playerAwardRows ?? []) {
+    const key = `${row.player_id}:${row.title}`;
+    awardCountBy.set(key, (awardCountBy.get(key) ?? 0) + 1);
   }
 
   // Players join EVERY band their value falls into (e.g. a player with 220
@@ -154,12 +233,29 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
       championClubCounts.get(s.player_id) ?? 0,
       s.player_id,
     );
+    addToBands(
+      "premierships",
+      premiershipClubCounts.get(s.player_id) ?? 0,
+      s.player_id,
+    );
+    addToBands("golden_boot", awardCountBy.get(`${s.player_id}:Golden Boot`) ?? 0, s.player_id);
+    addToBands(
+      "jw_medal",
+      awardCountBy.get(`${s.player_id}:Johnny Warren Medal`) ?? 0,
+      s.player_id,
+    );
+    addToBands(
+      "marston_medal",
+      awardCountBy.get(`${s.player_id}:Joe Marston Medal`) ?? 0,
+      s.player_id,
+    );
     addToBands("minutes", s.minutes ?? 0, s.player_id);
     addToBands("yellow_cards", s.yellow_cards ?? 0, s.player_id);
     addToBands("clean_sheets", s.clean_sheets ?? 0, s.player_id);
     addToBands("own_goals", s.own_goals ?? 0, s.player_id);
     addToBands("finals_goals", s.finals_goals ?? 0, s.player_id);
     addToBands("finals_apps", s.finals_appearances ?? 0, s.player_id);
+    addToBands("multi_goal_game", s.most_goals_game ?? 0, s.player_id);
 
     const clubCount = clubCounts.get(s.player_id) ?? 0;
     addToBands("clubs", clubCount, s.player_id);
@@ -296,6 +392,14 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
         .split(",")
         .filter((s) => champSeasons.has(s.trim())).length;
       addClubBand(pc.club_id, "championships", overlap, pc.player_id);
+    }
+    // Premierships at THIS club: same construction.
+    const premSeasons = premiershipSeasonSets.get(pc.club_id);
+    if (premSeasons && pc.seasons) {
+      const overlap = pc.seasons
+        .split(",")
+        .filter((s) => premSeasons.has(s.trim())).length;
+      addClubBand(pc.club_id, "premierships", overlap, pc.player_id);
     }
   }
 
@@ -491,6 +595,7 @@ const NON_CLUB_CATEGORIES: Category[] = [
   "goals",
   "red_cards",
   "championships",
+  "premierships",
   "minutes",
   "clubs",
   "yellow_cards",
@@ -503,7 +608,14 @@ const NON_CLUB_CATEGORIES: Category[] = [
   "finals_goals",
   "finals_apps",
   "height",
-  "managed_by"];
+  "managed_by",
+  "golden_boot",
+  "jw_medal",
+  "marston_medal",
+  "era",
+  "mid_season",
+  "one_club_stint",
+  "multi_goal_game"];
 
 /**
  * Category groups that are too similar to appear together in one grid; at most

@@ -24,6 +24,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   goals: "Goals",
   red_cards: "Red Cards",
   championships: "Championships",
+  premierships: "Premierships",
   minutes: "Minutes",
   clubs: "Clubs",
   yellow_cards: "Yellow Cards",
@@ -32,11 +33,18 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   win_pct: "Win %",
   nationality: "Nationality",
   position: "Position",
-  own_goals: "Own Goals",
-  finals_goals: "Finals Goals (career)",
-  finals_apps: "Finals Apps (career)",
+  own_goals: "Own Goals (Career)",
+  finals_goals: "Finals Goals (Career)",
+  finals_apps: "Finals Apps (Career)",
   height: "Height",
-  managed_by: "Managed By",
+  managed_by: "Managed By (Career)",
+  golden_boot: "Golden Boot (Career)",
+  jw_medal: "Johnny Warren Medal (Career)",
+  marston_medal: "Joe Marston Medal (Career)",
+  era: "Era (Career)",
+  mid_season: "Mid-Season Move",
+  one_club_stint: "Seasons at One Club",
+  multi_goal_game: "Most Goals in a Game (Career)",
 };
 
 /**
@@ -96,6 +104,10 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
     { label: "1+", min: 1, max: Infinity },
     { label: "2+", min: 2, max: Infinity },
   ],
+  premierships: [
+    { label: "1+", min: 1, max: Infinity },
+    { label: "2+", min: 2, max: Infinity },
+  ],
   minutes: [
     { label: "Under 1000", min: 0, max: 999 },
     { label: "1000-4999", min: 1000, max: 4999 },
@@ -148,6 +160,35 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
   finals_apps: [
     { label: "5+", min: 5, max: Infinity },
     { label: "10+", min: 10, max: Infinity },
+  ],
+  golden_boot: [
+    { label: "1+", min: 1, max: Infinity },
+    { label: "2+", min: 2, max: Infinity },
+  ],
+  jw_medal: [
+    { label: "1+", min: 1, max: Infinity },
+    { label: "2+", min: 2, max: Infinity },
+  ],
+  marston_medal: [
+    { label: "1+", min: 1, max: Infinity },
+  ],
+  era: [
+    { label: "By 2009-10", min: 0, max: 2009 },
+    { label: "2010-11 to 2015-16", min: 2010, max: 2015 },
+    { label: "2016-17 to 2020-21", min: 2016, max: 2020 },
+    { label: "2021-22 or later", min: 2021, max: Infinity },
+  ],
+  mid_season: [
+    { label: "Yes", min: 1, max: Infinity },
+  ],
+  one_club_stint: [
+    { label: "3+", min: 3, max: Infinity },
+    { label: "4+", min: 4, max: Infinity },
+    { label: "5+", min: 5, max: Infinity },
+  ],
+  multi_goal_game: [
+    { label: "Hat-trick (3+)", min: 3, max: Infinity },
+    { label: "4+ in a game", min: 4, max: Infinity },
   ],
   height: [
     { label: "190cm+", min: 190, max: Infinity },

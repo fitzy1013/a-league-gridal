@@ -18,14 +18,23 @@ const CLUB_SPECIFIC = [
   ["Clean Sheets (GK)", "clean sheets kept for that club"],
   ["Win %", "wins with that club ÷ games for that club"],
   ["Debut Age", "age when the player debuted for that club"],
-  ["Championships", "titles won while registered at that club"],
+  ["Championships", "grand-final titles won while registered at that club"],
+  ["Premierships", "minor-premiership titles won while registered at that club"],
 ];
 
 const CAREER_ONLY = [
+  ["Golden Boot", "times won the league's top-scorer award"],
+  ["Johnny Warren Medal", "times won the A-League's player-of-the-year medal"],
+  ["Joe Marston Medal", "times won best-on-ground in a grand final"],
   ["Finals Apps / Finals Goals", "finals stats are tracked career-wide only"],
   ["Own Goals", "own goals are career-wide only"],
+  ["Era", "based on the player's first A-League season (By 2009-10, 2010-11 to 2015-16, 2016-17 to 2020-21, 2021-22 or later)"],
+  ["Mid-Season Move", "was registered at two clubs during the same season"],
+  ["Seasons at One Club", "longest spell of distinct seasons at a single club"],
+  ["Most Goals in a Game", "career-best single-game tally (hat-trick = 3+)"],
   ["Clubs", "how many A-League clubs the player has played for"],
   ["Managed By", "player just needs to be registered at the club in a season that manager was in charge"],
+  ["Height", "listed profile height — 190cm+ or 170cm or shorter"],
   ["Nationality / Position", "attributes of the player, unchanged by clubs"],
 ];
 
@@ -114,11 +123,17 @@ export default async function RulesPage() {
           <li>Multiple different players can be valid for the same cell.</li>
           <li>
             The official answer key never reuses the same player twice within
-            one grid.
+            one grid — and neither can you.
           </li>
           <li>
             Bands are thresholds: <em>10–30</em> means between 10 and 30,
-            <em> 25+</em> means 25 or more.
+            <em> 25+</em> means 25 or more, <em>Under 25</em> means fewer
+            than 25.
+          </li>
+          <li>
+            A-League honours in brief: the <strong>Premiership</strong> is for
+            finishing top of the table after the regular season; the{" "}
+            <strong>Championship</strong> is for winning the grand final.
           </li>
         </ul>
       </section>

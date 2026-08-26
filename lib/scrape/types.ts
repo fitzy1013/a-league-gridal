@@ -27,6 +27,7 @@ export interface ParsedSeasonStats {
   finalsAppearances?: number;
   finalsGoals?: number;
   ownGoals?: number;
+  mostGoalsGame?: number;
 }
 
 export interface ParsedPlayerClubs {

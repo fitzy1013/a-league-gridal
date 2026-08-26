@@ -4,6 +4,7 @@ export type Category =
   | "goals"
   | "red_cards"
   | "championships"
+  | "premierships"
   | "minutes"
   | "clubs"
   | "yellow_cards"
@@ -16,7 +17,14 @@ export type Category =
   | "finals_goals"
   | "finals_apps"
   | "height"
-  | "managed_by";
+  | "managed_by"
+  | "golden_boot"
+  | "jw_medal"
+  | "marston_medal"
+  | "era"
+  | "mid_season"
+  | "one_club_stint"
+  | "multi_goal_game";
 
 /** Categories whose criteria are numeric bands (see NUMERIC_BANDS). */
 export type BandedCategory = Extract<
@@ -25,6 +33,7 @@ export type BandedCategory = Extract<
   | "goals"
   | "red_cards"
   | "championships"
+  | "premierships"
   | "minutes"
   | "clubs"
   | "yellow_cards"
@@ -35,6 +44,13 @@ export type BandedCategory = Extract<
   | "finals_goals"
   | "finals_apps"
   | "height"
+  | "golden_boot"
+  | "jw_medal"
+  | "marston_medal"
+  | "era"
+  | "mid_season"
+  | "one_club_stint"
+  | "multi_goal_game"
 >;
 
 /** Categories whose criteria are plain values (club name, country, position). */
@@ -43,9 +59,9 @@ export type CategoricalCategory = Extract<Category, "club" | "nationality" | "po
 /**
  * Stat categories that are evaluated PER CLUB when paired with a Club
  * criterion in the same cell: e.g. "Melbourne Victory x 20+ Goals" requires
- * 20+ goals scored FOR Melbourne Victory. All other categories (titles,
- * minutes, nationality, position, clubs) stay career-wide even when paired
- * with a club.
+ * 20+ goals scored FOR Melbourne Victory. All other categories (finals,
+ * own goals, nationality, position, managed by) stay career-wide even when
+ * paired with a club.
  */
 export const PAIR_AWARE_CATEGORIES: BandedCategory[] = [
   "appearances",
@@ -57,6 +73,7 @@ export const PAIR_AWARE_CATEGORIES: BandedCategory[] = [
   "clean_sheets",
   "minutes",
   "championships",
+  "premierships",
 ];
 
 export function isPairAwareCategory(category: Category): boolean {
@@ -69,6 +86,7 @@ export const ALL_CATEGORIES: Category[] = [
   "goals",
   "red_cards",
   "championships",
+  "premierships",
   "minutes",
   "clubs",
   "yellow_cards",
@@ -82,6 +100,13 @@ export const ALL_CATEGORIES: Category[] = [
   "finals_apps",
   "height",
   "managed_by",
+  "golden_boot",
+  "jw_medal",
+  "marston_medal",
+  "era",
+  "mid_season",
+  "one_club_stint",
+  "multi_goal_game",
 ];
 
 export interface NumericBand {

@@ -48,10 +48,12 @@ export interface SeasonStatRow {
   finals_appearances: number | null;
   finals_goals: number | null;
   own_goals: number | null;
+  most_goals_game: number | null;
 }
 
 export interface PlayerTitleRow {
   player_id: number;
+  title: string;
 }
 
 export interface GridRow {
@@ -182,12 +184,18 @@ export async function loadPlayerClubs(client: SupabaseClient): Promise<PlayerClu
 }
 
 export async function loadAllTimeStats(client: SupabaseClient): Promise<SeasonStatRow[]> {
-  // Prefer finals/own-goal columns; fall back gracefully when the
-  // 0005_finals_own_goals migration hasn't been applied yet.
+  // Prefer finals/own-goal/most-goals columns; fall back gracefully when
+  // later migrations haven't been applied yet.
+  const full = await fetchStatPage(
+    "player_id,appearances,goals,yellow_cards,red_cards,clean_sheets,minutes,finals_appearances,finals_goals,own_goals,most_goals_game",
+  );
+  if (full) return full;
   const withFinals = await fetchStatPage(
     "player_id,appearances,goals,yellow_cards,red_cards,clean_sheets,minutes,finals_appearances,finals_goals,own_goals",
   );
-  if (withFinals) return withFinals;
+  if (withFinals) {
+    return withFinals.map((r) => ({ ...r, most_goals_game: null }));
+  }
   const rows =
     (await fetchStatPage(
       "player_id,appearances,goals,yellow_cards,red_cards,clean_sheets,minutes",
@@ -197,6 +205,7 @@ export async function loadAllTimeStats(client: SupabaseClient): Promise<SeasonSt
     finals_appearances: null,
     finals_goals: null,
     own_goals: null,
+    most_goals_game: null,
   }));
 
   async function fetchStatPage(columns: string): Promise<SeasonStatRow[] | null> {
@@ -209,7 +218,9 @@ export async function loadAllTimeStats(client: SupabaseClient): Promise<SeasonSt
           .range(from, to) as unknown as PromiseLike<PageResult<SeasonStatRow>>,
       );
     } catch (e) {
-      if (/finals_appearances/.test(e instanceof Error ? e.message : "")) return null;
+      if (/finals_appearances|most_goals_game/.test(e instanceof Error ? e.message : "")) {
+        return null;
+      }
       throw e;
     }
   }
@@ -217,8 +228,33 @@ export async function loadAllTimeStats(client: SupabaseClient): Promise<SeasonSt
 
 export async function loadPlayerTitleCounts(client: SupabaseClient): Promise<PlayerTitleRow[]> {
   return fetchAllRows<PlayerTitleRow>((from, to) =>
-    client.from("player_titles").select("player_id").range(from, to),
+    client.from("player_titles").select("player_id,title").range(from, to),
   );
+}
+
+/** Season-level Premiership winners: club_id -> winning seasons. */
+export async function loadPremiershipSeasons(
+  client: SupabaseClient,
+): Promise<Map<number, Set<string>>> {
+  const out = new Map<number, Set<string>>();
+  try {
+    const { data, error } = await client
+      .from("premiership_seasons")
+      .select("club_id,season")
+      .range(0, 99999);
+    if (error) throw new Error(error.message);
+    for (const r of data ?? []) {
+      let set = out.get(r.club_id);
+      if (!set) {
+        set = new Set<string>();
+        out.set(r.club_id, set);
+      }
+      set.add(r.season);
+    }
+  } catch {
+    // table missing pre-migration — premierships stay empty until scraped
+  }
+  return out;
 }
 
 /** Ids of clubs that have won at least one A-League Championship. */
