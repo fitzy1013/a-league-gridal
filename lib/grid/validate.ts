@@ -124,6 +124,32 @@ export async function playerSatisfiesCriterion(
       if (band.label === "190cm+" && /rashani/i.test(player.name)) return false;
       return player.height >= band.min && player.height <= band.max;
     }
+    case "managed_by": {
+      // Player was registered at a club in a season the manager coached there.
+      const { data: mgrRows } = await db
+        .from("manager_seasons")
+        .select("club_id,season")
+        .eq("manager_name", displayLabel);
+      if (!mgrRows || mgrRows.length === 0) return false;
+      const { data: pcRows } = await db
+        .from("player_clubs")
+        .select("club_id,seasons")
+        .eq("player_id", playerId);
+      for (const pc of pcRows ?? []) {
+        const tenure = String(pc.seasons ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (
+          (mgrRows as { club_id: number; season: string }[]).some(
+            (m) => m.club_id === pc.club_id && tenure.includes(m.season),
+          )
+        ) {
+          return true;
+        }
+      }
+      return false;
+    }
     case "appearances":
     case "goals":
     case "red_cards":
@@ -424,6 +450,34 @@ export async function describeStatValue(
       return labels.length > 0
         ? `${playerName} is classified as ${labels.join(" or ")}`
         : `${playerName} has no position recorded`;
+    }
+    case "managed_by": {
+      const { data: mgrRows } = await db
+        .from("manager_seasons")
+        .select("club_id,season")
+        .eq("manager_name", displayLabel);
+      if (!mgrRows || mgrRows.length === 0) return null;
+      const { data: pcRows } = await db
+        .from("player_clubs")
+        .select("club_id,seasons")
+        .eq("player_id", playerId);
+      for (const pc of pcRows ?? []) {
+        const tenure = String(pc.seasons ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        for (const m of mgrRows as { club_id: number; season: string }[]) {
+          if (m.club_id === pc.club_id && tenure.includes(m.season)) {
+            const { data: club } = await db
+              .from("clubs")
+              .select("name")
+              .eq("id", m.club_id)
+              .maybeSingle();
+            return `${playerName} played under ${displayLabel} at ${club?.name ?? "that club"} (${m.season})`;
+          }
+        }
+      }
+      return `${playerName} never played under ${displayLabel}`;
     }
     default:
       return null;

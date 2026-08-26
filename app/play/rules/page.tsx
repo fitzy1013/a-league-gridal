@@ -25,6 +25,7 @@ const CAREER_ONLY = [
   ["Finals Apps / Finals Goals", "finals stats are tracked career-wide only"],
   ["Own Goals", "own goals are career-wide only"],
   ["Clubs", "how many A-League clubs the player has played for"],
+  ["Managed By", "player just needs to be registered at the club in a season that manager was in charge"],
   ["Nationality / Position", "attributes of the player, unchanged by clubs"],
 ];
 

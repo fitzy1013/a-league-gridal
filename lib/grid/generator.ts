@@ -57,6 +57,13 @@ export interface BuildDatasetOptions {
   championClubIds: number[];
   /** season-level Championship winners: club id -> winning seasons */
   championshipSeasons?: Map<number, Set<string>>;
+  /** manager tenures: one row per manager-club-season */
+  managerSeasons?: {
+    managerId: number;
+    managerName: string;
+    clubId: number;
+    season: string;
+  }[];
 }
 
 /**
@@ -82,6 +89,7 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     finals_goals: new Map(),
     finals_apps: new Map(),
     height: new Map(),
+    managed_by: new Map(),
   };
   const clubStatMembers = new Map<string, Set<number>>();
 
@@ -180,6 +188,28 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
         if (p.height >= band.min && p.height <= band.max) {
           if (band.label === "190cm+" && skipTallest) continue;
           addToMembers("height", band.label, p.id);
+        }
+      }
+    }
+  }
+
+  // Managed By: a player counts under a manager when they were registered at
+  // the manager's club in a season that manager was in charge there.
+  if (opts.managerSeasons?.length) {
+    const tenuresByClub = new Map<number, { playerId: number; seasons: Set<string> }[]>();
+    for (const pc of opts.playerClubs) {
+      if (!pc.seasons) continue;
+      const list = tenuresByClub.get(pc.club_id) ?? [];
+      list.push({
+        playerId: pc.player_id,
+        seasons: new Set(pc.seasons.split(",").map((s) => s.trim())),
+      });
+      tenuresByClub.set(pc.club_id, list);
+    }
+    for (const ms of opts.managerSeasons) {
+      for (const t of tenuresByClub.get(ms.clubId) ?? []) {
+        if (t.seasons.has(ms.season)) {
+          addToMembers("managed_by", ms.managerName, t.playerId);
         }
       }
     }
@@ -472,7 +502,8 @@ const NON_CLUB_CATEGORIES: Category[] = [
   "own_goals",
   "finals_goals",
   "finals_apps",
-  "height"];
+  "height",
+  "managed_by"];
 
 /**
  * Category groups that are too similar to appear together in one grid; at most

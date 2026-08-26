@@ -36,6 +36,16 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   finals_goals: "Finals Goals (career)",
   finals_apps: "Finals Apps (career)",
   height: "Height",
+  managed_by: "Managed By",
+};
+
+/**
+ * Optional per-category explanations surfaced as an ⓘ pop-up on grid headers
+ * (used where a short sub-label alone would be misleading).
+ */
+export const CATEGORY_INFO: Partial<Record<Category, string>> = {
+  managed_by:
+    "Counts anyone registered at the club in a season this manager was in charge — they don't need to have played under them.",
 };
 
 /**

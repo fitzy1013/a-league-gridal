@@ -328,3 +328,55 @@ export function parseChampionshipSeasons(
 
   return result;
 }
+
+export interface ParsedManagerSeason {
+  managerId: number;
+  managerName: string;
+  clubId: number;
+  season: string;
+}
+
+/**
+ * Parses a manager profile's clubs table (manager-clubs-data-table):
+ * Season | Club(s) x2 | Games Managed | W/D/L ...
+ * Only the tenure mapping (manager, club, season) is needed for grids.
+ */
+export function parseManagerSeasons(
+  html: string,
+  managerId: number,
+): ParsedManagerSeason[] {
+  const $ = cheerio.load(html);
+  const result: ParsedManagerSeason[] = [];
+
+  const titleMatch = html.match(/<title>\s*([^<(]+?)\s*\(Manager[^)]*\)\s*::/i);
+  const managerName = titleMatch ? titleMatch[1].trim() : `Manager #${managerId}`;
+
+  $("#manager-seasons-data-table tbody tr").each((_, tr) => {
+    const tds = $(tr).find("td");
+    if (tds.length < 3) return;
+
+    // Season cell also carries round-range notes ("R19 - R20", "R22 -").
+    const seasonMatch = $(tds[0]).text().match(/(\d{4}-\d{2})/);
+    if (!seasonMatch) return;
+    const season = seasonMatch[1];
+
+    let clubId: number | null = null;
+    $(tds[1])
+      .find("a")
+      .each((_, a) => {
+        if (clubId != null) return;
+        const m = ($(a).attr("href") ?? "").match(/club_id=(\d+)/);
+        if (m) clubId = Number(m[1]);
+      });
+    if (clubId == null) return;
+
+    result.push({
+      managerId,
+      managerName,
+      clubId,
+      season,
+    });
+  });
+
+  return result;
+}

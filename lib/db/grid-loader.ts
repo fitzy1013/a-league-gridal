@@ -6,6 +6,7 @@ import {
   loadChampionClubIds,
   loadChampionshipSeasons,
   loadClubs,
+  loadManagerSeasons,
   loadPlayerClubs,
   loadPlayers,
   type GridRow,
@@ -19,7 +20,7 @@ export type { GridRow };
  * Used by the scheduled/on-demand API routes (service-role client).
  */
 export async function loadGridDataset(client: SupabaseClient): Promise<GridDataset> {
-  const [clubs, players, playerClubs, stats, championClubIds, championshipSeasons] =
+  const [clubs, players, playerClubs, stats, championClubIds, championshipSeasons, managerSeasons] =
     await Promise.all([
       loadClubs(client),
       loadPlayers(client),
@@ -27,6 +28,7 @@ export async function loadGridDataset(client: SupabaseClient): Promise<GridDatas
       loadAllTimeStats(client),
       loadChampionClubIds(client),
       loadChampionshipSeasons(client),
+      loadManagerSeasons(client),
     ]);
 
   return buildDataset({
@@ -36,5 +38,6 @@ export async function loadGridDataset(client: SupabaseClient): Promise<GridDatas
     stats,
     championClubIds,
     championshipSeasons,
+    managerSeasons,
   });
 }

@@ -256,6 +256,32 @@ export async function loadChampionshipSeasons(
   return out;
 }
 
+export interface ManagerSeasonRow {
+  managerId: number;
+  managerName: string;
+  clubId: number;
+  season: string;
+}
+
+/** Manager tenures: one row per manager-club-season. Empty pre-0009. */
+export async function loadManagerSeasons(client: SupabaseClient): Promise<ManagerSeasonRow[]> {
+  try {
+    const { data, error } = await client
+      .from("manager_seasons")
+      .select("manager_id,manager_name,club_id,season")
+      .range(0, 99999);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => ({
+      managerId: r.manager_id,
+      managerName: r.manager_name,
+      clubId: r.club_id,
+      season: r.season,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function getTodayGrid(
   client: SupabaseClient,
   date: string,

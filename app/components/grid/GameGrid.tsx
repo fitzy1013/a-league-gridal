@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CATEGORY_LABELS } from "@/lib/grid/labels";
+import { CATEGORY_INFO, CATEGORY_LABELS } from "@/lib/grid/labels";
 import type { Category } from "@/lib/grid/types";
 import { Button } from "@/components/ui/button";
 import { recordResult } from "@/app/play/daily/actions";
@@ -14,6 +14,32 @@ import ShareButton from "./ShareButton";
 import type { CellState, ClientGridSpec, PlayerOption } from "./types";
 
 const EMPTY_CELL: CellState = { playerId: null, playerName: null, status: "empty" };
+
+/** Small ⓘ pop-up for categories whose sub-label needs a longer explanation. */
+function CategoryInfo({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative ml-0.5 inline-flex">
+      <button
+        type="button"
+        aria-label="More info"
+        className="rounded-full border border-muted-foreground/50 px-[4px] text-[9px] leading-[13px] text-muted-foreground hover:bg-accent"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        onBlur={() => setOpen(false)}
+      >
+        i
+      </button>
+      {open && (
+        <span className="absolute left-1/2 top-full z-30 mt-1 w-44 -translate-x-1/2 rounded-md border bg-background p-2 text-left text-[10px] font-normal normal-case leading-snug tracking-normal text-foreground shadow-md">
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
 
 export interface CellAnswerCount {
   r: number;
@@ -225,6 +251,9 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
                 {labelFor(spec.colTypes[c])}
               </span>
             )}
+            {CATEGORY_INFO[spec.colTypes[c]] && (
+              <CategoryInfo text={CATEGORY_INFO[spec.colTypes[c]]!} />
+            )}
           </div>
         ))}
 
@@ -236,6 +265,9 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
                 <span className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                   {labelFor(spec.rowTypes[r])}
                 </span>
+              )}
+              {CATEGORY_INFO[spec.rowTypes[r]] && (
+                <CategoryInfo text={CATEGORY_INFO[spec.rowTypes[r]]!} />
               )}
             </div>
             {row.map((cell, c) => (
