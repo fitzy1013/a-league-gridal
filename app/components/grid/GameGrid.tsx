@@ -236,7 +236,7 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
       <div
         className="grid gap-1"
         style={{
-          gridTemplateColumns: `minmax(3.25rem, 24vw) repeat(${size}, minmax(0, 1fr))`,
+          gridTemplateColumns: `minmax(3.25rem, clamp(5rem, 24vw, 6.5rem)) repeat(${size}, minmax(0, 1fr))`,
         }}
       >
         <div className="flex items-center justify-center rounded-md px-1 text-xs font-medium text-muted-foreground">
