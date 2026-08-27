@@ -167,10 +167,9 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
     { label: "1+", min: 1, max: Infinity },
   ],
   era: [
-    { label: "By 2009-10", min: 0, max: 2009 },
-    { label: "2010-11 to 2015-16", min: 2010, max: 2015 },
-    { label: "2016-17 to 2020-21", min: 2016, max: 2020 },
-    { label: "2021-22 or later", min: 2021, max: Infinity },
+    { label: "2005/06 to 2010/11", min: 2005, max: 2010 },
+    { label: "2011/12 to 2017/18", min: 2011, max: 2017 },
+    { label: "2018/19 to 2022/23", min: 2018, max: 2022 },
   ],
   mid_season: [
     { label: "2+ Clubs in One Season", min: 1, max: Infinity },

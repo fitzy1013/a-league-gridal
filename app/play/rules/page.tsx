@@ -28,14 +28,13 @@ const CAREER_ONLY = [
   ["Joe Marston Medal", "times won best-on-ground in a grand final"],
   ["Finals Apps / Finals Goals", "finals stats are tracked career-wide only"],
   ["Own Goals", "own goals are career-wide only"],
-  ["Era", "based on the player's first A-League season (By 2009-10, 2010-11 to 2015-16, 2016-17 to 2020-21, 2021-22 or later)"],
+  ["Era", "played at least one season in 2005/06 to 2010/11, 2011/12 to 2017/18, or 2018/19 to 2022/23"],
   ["Mid-Season Move", "was registered at two clubs during the same season"],
   ["Seasons at One Club", "longest spell of distinct seasons at a single club"],
   ["Most Goals in a Game", "career-best single-game tally (hat-trick = 3+)"],
   ["Clubs", "how many A-League clubs the player has played for"],
   ["Managed By", "player just needs to be registered at the club in a season that manager was in charge"],
   ["Height", "listed profile height — 190cm+ or 170cm or shorter"],
-  ["Obscurity", "Wikipedia-based rarity rating — rarer picks score higher, max 100 each"],
   ["Nationality / Position", "attributes of the player, unchanged by clubs"],
 ];
 
