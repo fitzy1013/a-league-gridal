@@ -19,7 +19,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   championships: "Championships",
   premierships: "Premierships",
   minutes: "Minutes",
-  clubs: "Clubs",
+  clubs: "Clubs (Career)",
   yellow_cards: "Yellow Cards",
   clean_sheets: "Clean Sheets (GK)",
   debut_age: "Debut Age",
@@ -29,15 +29,15 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   own_goals: "Own Goals (Career)",
   finals_goals: "Finals Goals (Career)",
   finals_apps: "Finals Apps (Career)",
-  height: "Height",
+  height: "Height (Career)",
   managed_by: "Managed By (Career)",
   golden_boot: "Golden Boot (Career)",
   jw_medal: "Johnny Warren Medal (Career)",
   marston_medal: "Joe Marston Medal (Career)",
   era: "Era (Career)",
-  mid_season: "Mid-Season Move",
-  one_club_stint: "Seasons at One Club",
-multi_goal_game: "Most Goals in a Game (Career)",
+  mid_season: "Mid-Season Move (Career)",
+  one_club_stint: "Seasons at One Club (Career)",
+  multi_goal_game: "Most Goals in a Game (Career)",
 };
 
 /**
