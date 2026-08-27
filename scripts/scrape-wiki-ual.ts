@@ -32,24 +32,31 @@ function extractWikiTitle(html: string): string | null {
   }
 }
 
-/** Total views in last 365 days (daily granularity). */
+/** Most reliable: total views last 30 days via monthly endpoint (single data point). */
 async function yearlyViews(title: string): Promise<number | null> {
-  const end = new Date();
-  end.setDate(end.getDate() - 1); // yesterday = last complete day
-  const start = new Date(end);
-  start.setDate(start.getDate() - 364);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, "");
+  // Use monthly granularity for last complete month — far less 429s than 365× daily.
+  // For true 30-day window we take the last full month.
+  const now = new Date();
+  now.setMonth(now.getMonth() - 1);
+  now.setDate(1);
+  const fmt = (d: Date) => d.toISOString().slice(0, 7).replace(/-/g, "") + "01";
+  // Wikimedia monthly expects YYYYMMDD with DD=01
+  const start = fmt(now);
+  const end = fmt(now);
   const url =
     `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/` +
-    `${encodeURIComponent(title.replace(/ /g, "_"))}/daily/${fmt(start)}/${fmt(end)}`;
+    `${encodeURIComponent(title.replace(/ /g, "_"))}/monthly/${start}/${end}`;
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       const res = await fetch(url, { headers: UA });
       if (res.status === 404) return 0;
-      if (res.status === 429 || res.status >= 500) throw new Error(String(res.status));
+      if (res.status === 429 || res.status >= 500) {
+        const retryAfter = Number(res.headers.get("retry-after") || 2);
+        await sleep(retryAfter * 1000 + 500);
+        throw new Error(String(res.status));
+      }
       const json: any = await res.json();
       const items: number[] = (json?.items ?? []).map((i: any) => i.views ?? 0);
-      // Sum of 365 days
       return items.reduce((a, b) => a + b, 0);
     } catch {
       await sleep(1500 * (attempt + 1));
@@ -61,7 +68,7 @@ async function yearlyViews(title: string): Promise<number | null> {
 function obscurityFromYearlyViews(views: number | null): number | null {
   if (views == null) return null;
   if (views < 100) return 100;
-  // 100->100, 1k->75, 10k->50, 100k->25, 1M->0
+  // 100->100, 1k->75, 10k->50, 100k->25, 1M->0 (views = last 30 days)
   const score = 100 - 25 * Math.log10(views / 100);
   return Math.round(Math.max(0, Math.min(100, score)));
 }
@@ -83,6 +90,7 @@ async function main() {
   let withLink = 0;
   let withoutLink = 0;
   const updates: { id: number; wiki_title: string | null; wiki_views_monthly: number | null; obscurity: number | null }[] = [];
+  const failedViews: { id: number; name: string; title: string }[] = [];
 
   for (const p of players) {
     let title: string | null = null;
@@ -106,7 +114,8 @@ async function main() {
       withLink++;
       views = await yearlyViews(title);
       if (views == null) {
-        console.log(`  views fetch failed for ${p.name} -> "${title}", will retry next run`);
+        console.log(`  views fetch failed for ${p.name} -> "${title}", queued for retry at end`);
+        failedViews.push({ id: p.id, name: p.name, title });
         done++;
         await sleep(300);
         continue;
@@ -114,17 +123,35 @@ async function main() {
       score = obscurityFromYearlyViews(views);
       updates.push({ id: p.id, wiki_title: title, wiki_views_monthly: views, obscurity: score });
       // Log a few examples
-      if (withLink <= 5) console.log(`  ${p.name} -> "${title}" views 365d=${views} obscurity=${score}`);
+      if (withLink <= 5) console.log(`  ${p.name} -> "${title}" views 30d=${views} obscurity=${score}`);
     }
 
     done++;
     if (done % 100 === 0) {
-      console.log(`progress: ${done}/${players.length} (${withLink} with link, ${withoutLink} without)`);
+      console.log(`progress: ${done}/${players.length} (${withLink} with link, ${withoutLink} without, ${failedViews.length} queued)`);
       await flush(supabase, updates.splice(0));
     }
-    await sleep(350); // be nice to UAL + Wikimedia (2 req per player with link)
+    await sleep(650); // monthly endpoint + UAL fetch — keep under rate limit
   }
   await flush(supabase, updates.splice(0));
+
+  // Retry any with link but views timed out
+  if (failedViews.length > 0) {
+    console.log(`retrying ${failedViews.length} with link but views timed out...`);
+    for (const f of failedViews) {
+      const views = await yearlyViews(f.title);
+      if (views == null) {
+        console.log(`  still failed for ${f.name} -> "${f.title}", leaving as 100 for now`);
+        updates.push({ id: f.id, wiki_title: f.title, wiki_views_monthly: 0, obscurity: 100 });
+      } else {
+        const score = obscurityFromYearlyViews(views);
+        console.log(`  retry ok for ${f.name} -> "${f.title}" views=${views} obscurity=${score}`);
+        updates.push({ id: f.id, wiki_title: f.title, wiki_views_monthly: views, obscurity: score });
+      }
+      await sleep(800);
+    }
+    await flush(supabase, updates.splice(0));
+  }
 
   function flush(supa: ReturnType<typeof createAdminClient>, batch: typeof updates) {
     if (batch.length === 0) return Promise.resolve();
