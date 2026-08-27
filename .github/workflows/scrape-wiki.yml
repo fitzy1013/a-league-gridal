@@ -1,0 +1,39 @@
+name: Wiki obscurity (bi-weekly)
+
+# UAL "More information at Wikipedia" -> 365d pageviews -> 0-100 obscurity
+# Runs every 14 days; also manual via Actions tab.
+on:
+  schedule:
+    # 03:00 UTC on the 1st and 15th ~ every 2 weeks
+    - cron: "0 3 1,15 * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: wiki-obscurity
+  cancel-in-progress: false
+
+jobs:
+  wiki:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write env file
+        run: |
+          printf 'NEXT_PUBLIC_SUPABASE_URL=%s\n' "$NEXT_PUBLIC_SUPABASE_URL" > .env
+          printf 'SUPABASE_SERVICE_ROLE_KEY=%s\n' "$SUPABASE_SERVICE_ROLE_KEY" >> .env
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      - name: Wiki obscurity via UAL Wikipedia links (365d)
+        run: npx tsx scripts/scrape-wiki-ual.ts
