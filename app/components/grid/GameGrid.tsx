@@ -9,6 +9,7 @@ import { loadProgress, pruneOldProgress, saveProgress } from "./progress";
 import Cell from "./Cell";
 import GuessInput from "./GuessInput";
 import NextGridCountdown from "./NextGridCountdown";
+import ObscurityRadial from "./ObscurityRadial";
 import ResultModal from "./ResultModal";
 import ShareButton from "./ShareButton";
 import type { CellState, ClientGridSpec, PlayerOption } from "./types";
@@ -79,6 +80,7 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
   const [submitting, setSubmitting] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [obscurityEarned, setObscurityEarned] = useState<number | null>(null);
   const recordedRef = useRef(false);
 
   // Restore saved progress after mount (client-only, SSR-safe).
@@ -152,9 +154,16 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
           headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
         });
-        const data = (await res.json()) as { correct?: boolean; hint?: string };
+        const data = (await res.json()) as {
+          correct?: boolean;
+          hint?: string;
+          obscurity?: number;
+        };
         isCorrect = data.correct === true;
         setHint(!isCorrect ? (data.hint ?? null) : null);
+        if (isCorrect && typeof data.obscurity === "number") {
+          setObscurityEarned((prev) => (prev ?? 0) + data.obscurity!);
+        }
       } catch {
         // Network/server failure: mark incorrect rather than leaving the cell
         // stuck in a validating state.
@@ -233,7 +242,14 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
             </span>
           )}
           {spec.mode === "daily" && (
-            <ShareButton rows={cells} mode="daily" date={spec.date} correct={correct} total={size * size} />
+            <ShareButton
+              rows={cells}
+              mode="daily"
+              date={spec.date}
+              correct={correct}
+              total={size * size}
+              obscurity={obscurityEarned ?? null}
+            />
           )}
           {!finished ? (
             <Button variant="ghost" size="sm" onClick={() => setConfirming(true)} type="button">
@@ -310,20 +326,51 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
         </p>
       )}
 
+      {spec.mode !== undefined && (
+        <div className="mt-5 flex justify-center">
+          <ObscurityRadial value={obscurityEarned ?? 0} />
+        </div>
+      )}
+
       {selected && !finished && (
-        <div className="mt-4">
-          <p className="mb-2 text-sm text-muted-foreground">
-            Player who fits{" "}
-            <span className="font-medium text-foreground">{spec.rowValues[selected.r]}</span>
-            {spec.rowTypes[selected.r] !== "club" && ` (${labelFor(spec.rowTypes[selected.r])})`} ×{" "}
-            <span className="font-medium text-foreground">{spec.colValues[selected.c]}</span>
-            {spec.colTypes[selected.c] !== "club" && ` (${labelFor(spec.colTypes[selected.c])})`}
-          </p>
-          <GuessInput
-            onSelect={(player) => applyGuess(selected.r, selected.c, player)}
-            onClose={() => setSelected(null)}
-            excludeIds={usedPlayerIds}
-          />
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setSelected(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border bg-background p-4 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <p className="text-sm text-muted-foreground">
+                Player who fits{" "}
+                <span className="font-medium text-foreground">
+                  {spec.rowValues[selected.r]}
+                </span>
+                {spec.rowTypes[selected.r] !== "club" &&
+                  ` (${labelFor(spec.rowTypes[selected.r])})`}{" "}
+                ×{" "}
+                <span className="font-medium text-foreground">
+                  {spec.colValues[selected.c]}
+                </span>
+                {spec.colTypes[selected.c] !== "club" &&
+                  ` (${labelFor(spec.colTypes[selected.c])})`}
+              </p>
+              <button
+                type="button"
+                aria-label="Close"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setSelected(null)}
+              >
+                ×
+              </button>
+            </div>
+            <GuessInput
+              onSelect={(player) => applyGuess(selected.r, selected.c, player)}
+              onClose={() => setSelected(null)}
+              excludeIds={usedPlayerIds}
+            />
+          </div>
         </div>
       )}
 
@@ -355,6 +402,7 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
         total={size * size}
         counts={counts}
         answerUrl={answerUrl}
+        obscurity={obscurityEarned ?? null}
         onClose={() => setShowResult(false)}
       />
     </div>

@@ -44,7 +44,7 @@ if (fs.existsSync(path.join(dir, "club_3_allplayers.html"))) {
 }
 
 // Merge into the same shapes the scraper would write to the database.
-const playerRows = new Map<number, { id: number; name: string; position: string | null; club_id: number | null; nationality: string | null; nationality_flag_url: string | null; height: number | null }>();
+const playerRows = new Map<number, { id: number; name: string; position: string | null; club_id: number | null; nationality: string | null; nationality_flag_url: string | null; height: number | null; obscurity: number | null; }>();
 const clubs = new Map<number, { id: number; name: string; short_name: string; logo_url: string | null }>();
 const stats = new Map<string, { player_id: number; appearances: number | null; goals: number | null; yellow_cards: number | null; red_cards: number | null; clean_sheets: number | null; minutes: number | null; finals_appearances: number | null; finals_goals: number | null; own_goals: number | null; most_goals_game: number | null; }>();
 
@@ -66,7 +66,7 @@ const addPlayer = (p: {
       club_id: p.clubId ?? null,
       nationality: p.nationality ?? null,
       nationality_flag_url: p.nationalityFlagUrl ?? null,
-      height: null,
+      height: null, obscurity: null,
     });
   } else {
     existing.position ??= p.position ?? null;

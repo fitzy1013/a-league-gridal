@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { bandForLabel, positionLabels, WIN_PCT_MIN_APPEARANCES } from "./labels";
+import { bandForLabel, positionLabels } from "./labels";
 import type { BandedCategory, Category, NumericBand } from "./types";
 
 const AWARD_TITLES: Partial<Record<Category, string>> = {
@@ -177,7 +177,7 @@ export async function playerSatisfiesCriterion(
         .eq("season", "all")
         .maybeSingle();
       const apps = stat?.appearances ?? 0;
-      if (apps < WIN_PCT_MIN_APPEARANCES) return false;
+      if (apps === 0) return false;
       const pct = (wins / apps) * 100;
       return pct >= band.min && pct <= band.max;
     }
@@ -390,7 +390,7 @@ export async function playerSatisfiesClubStatCell(
     case "win_pct": {
       if (row.wins == null) return false;
       const apps = row.appearances ?? 0;
-      if (apps < WIN_PCT_MIN_APPEARANCES) return false;
+      if (apps === 0) return false;
       const pct = (row.wins / apps) * 100;
       return pct >= band.min && pct <= band.max;
     }
@@ -581,16 +581,16 @@ export async function describeStatValue(
       for (const set of tenures.values()) max = Math.max(max, set.size);
       return `${playerName}'s longest spell at one club was ${max} season${plural(max)}`;
     }
-    case "multi_goal_game": {
-      const { data: stat } = await db
-        .from("player_season_stats")
-        .select("most_goals_game")
-        .eq("player_id", playerId)
-        .eq("season", "all")
-        .maybeSingle();
-      const v = stat?.most_goals_game ?? 0;
-      return `${playerName}'s best game returned ${v} goal${plural(v)}`;
-    }
+        case "multi_goal_game": {
+          const { data: stat } = await db
+            .from("player_season_stats")
+            .select("most_goals_game")
+            .eq("player_id", playerId)
+            .eq("season", "all")
+            .maybeSingle();
+          const v = stat?.most_goals_game ?? 0;
+          return `${playerName}'s best game returned ${v} goal${plural(v)}`;
+        }
     case "win_pct": {
       const { data: stat } = await db
         .from("player_season_stats")
@@ -604,8 +604,8 @@ export async function describeStatValue(
         .select("wins")
         .eq("player_id", playerId);
       const wins = (rows ?? []).reduce<number>((acc, r) => acc + (r.wins ?? 0), 0);
-      if (apps < WIN_PCT_MIN_APPEARANCES || !rows?.some((r) => r.wins != null)) {
-        return `${playerName} has not enough games for a win %`;
+      if (!rows?.some((r) => r.wins != null) || apps === 0) {
+        return `${playerName} has no win % recorded`;
       }
       return `${playerName} won ${Math.round((wins / apps) * 100)}% of matches`;
     }

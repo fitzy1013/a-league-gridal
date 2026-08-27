@@ -22,7 +22,7 @@ export default function Cell({
   disabled: boolean;
   onClick: () => void;
 }) {
-  const canEdit = !disabled && (cell.status === "empty" || cell.status === "incorrect");
+  const canEdit = !disabled && cell.status === "empty";
 
   return (
     <button

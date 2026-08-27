@@ -6,13 +6,6 @@ export const GRID_SIZE = 3;
 export const ALL_TIME_SEASON = "all";
 
 /**
- * Minimum all-time appearances for a player to qualify for win-percentage
- * bands (avoids tiny-sample noise like 2 apps / 2 wins = 100%).
- * Keep in sync between generation and guess validation.
- */
-export const WIN_PCT_MIN_APPEARANCES = 15;
-
-/**
  * Nationalities with fewer players than this never become grid criteria
  * (cells would be near-impossible).
  */
@@ -44,16 +37,17 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   era: "Era (Career)",
   mid_season: "Mid-Season Move",
   one_club_stint: "Seasons at One Club",
-  multi_goal_game: "Most Goals in a Game (Career)",
+multi_goal_game: "Most Goals in a Game (Career)",
 };
 
 /**
- * Optional per-category explanations surfaced as an ⓘ pop-up on grid headers
+ * Optional per-category explanations surfaced as an info pop-up on grid headers
  * (used where a short sub-label alone would be misleading).
  */
 export const CATEGORY_INFO: Partial<Record<Category, string>> = {
   managed_by:
     "Counts anyone registered at the club in a season this manager was in charge — they don't need to have played under them.",
+
 };
 
 /**

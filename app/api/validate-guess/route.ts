@@ -131,7 +131,22 @@ export async function POST(request: NextRequest) {
     ]);
   }
 
-  return NextResponse.json(hint ? { correct, hint } : { correct });
+  let obscurity: number | null = null;
+  if (correct) {
+    const { data: player } = await supabase
+      .from("players")
+      .select("obscurity")
+      .eq("id", playerId!)
+      .maybeSingle();
+    // Unrated players (no wiki article crawled yet) score as fully obscure.
+    obscurity = player?.obscurity ?? 100;
+  }
+
+  return NextResponse.json(
+    obscurity != null
+      ? { correct, obscurity, ...(hint ? { hint } : {}) }
+      : { correct, ...(hint ? { hint } : {}) },
+  );
 
   type HintCriterion = { category: Category; label: string; clubName?: string };
 

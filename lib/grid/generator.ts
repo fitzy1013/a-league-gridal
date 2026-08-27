@@ -3,7 +3,6 @@ import {
   GRID_SIZE,
   MIN_NATIONALITY_PLAYERS,
   NUMERIC_BANDS,
-  WIN_PCT_MIN_APPEARANCES,
   positionLabels,
 } from "./labels";
 import type {
@@ -331,7 +330,7 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
   for (const s of opts.stats) {
     const wins = totalWins.get(s.player_id);
     const apps = s.appearances ?? 0;
-    if (wins == null || apps < WIN_PCT_MIN_APPEARANCES) continue;
+    if (wins == null || apps === 0) continue;
     addToBands("win_pct", (wins / apps) * 100, s.player_id);
   }
 
@@ -381,7 +380,7 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
       addClubBand(pc.club_id, "debut_age", pc.debut_age, pc.player_id);
     }
     const clubApps = pc.appearances ?? 0;
-    if (pc.wins != null && clubApps >= WIN_PCT_MIN_APPEARANCES) {
+    if (pc.wins != null && clubApps > 0) {
       addClubBand(pc.club_id, "win_pct", (pc.wins / clubApps) * 100, pc.player_id);
     }
     // Championships at THIS club: overlap of the player's tenure seasons with
@@ -615,7 +614,7 @@ const NON_CLUB_CATEGORIES: Category[] = [
   "era",
   "mid_season",
   "one_club_stint",
-  "multi_goal_game"];
+  "multi_goal_game",];
 
 /**
  * Category groups that are too similar to appear together in one grid; at most

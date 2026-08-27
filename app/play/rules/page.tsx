@@ -35,6 +35,7 @@ const CAREER_ONLY = [
   ["Clubs", "how many A-League clubs the player has played for"],
   ["Managed By", "player just needs to be registered at the club in a season that manager was in charge"],
   ["Height", "listed profile height — 190cm+ or 170cm or shorter"],
+  ["Obscurity", "Wikipedia-based rarity rating — rarer picks score higher, max 100 each"],
   ["Nationality / Position", "attributes of the player, unchanged by clubs"],
 ];
 
