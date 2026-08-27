@@ -126,12 +126,14 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
   };
 
   for (const pc of opts.playerClubs) {
+    if ((pc.appearances ?? 0) < 1) continue;
     addToMembers("club", String(pc.club_id), pc.player_id);
   }
 
-  // Distinct clubs represented per player (one player_clubs row per club).
+  // Distinct clubs represented per player (one player_clubs row per club, ≥1 game).
   const clubCounts = new Map<number, number>();
   for (const pc of opts.playerClubs) {
+    if ((pc.appearances ?? 0) < 1) continue;
     clubCounts.set(pc.player_id, (clubCounts.get(pc.player_id) ?? 0) + 1);
   }
 
@@ -188,9 +190,11 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
 
   // Championships: distinct Championship-winning clubs among the player's
   // all-time clubs (player-level ring counts aren't published by UAL).
+  // Only counts clubs where the player made ≥1 appearance.
   const championClubSet = new Set(opts.championClubIds);
   const championClubCounts = new Map<number, number>();
   for (const pc of opts.playerClubs) {
+    if ((pc.appearances ?? 0) < 1) continue;
     if (!championClubSet.has(pc.club_id)) continue;
     championClubCounts.set(pc.player_id, (championClubCounts.get(pc.player_id) ?? 0) + 1);
   }
@@ -200,6 +204,7 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
   const premiershipClubSet = new Set(premiershipSeasonSets.keys());
   const premiershipClubCounts = new Map<number, number>();
   for (const pc of opts.playerClubs) {
+    if ((pc.appearances ?? 0) < 1) continue;
     if (!premiershipClubSet.has(pc.club_id)) continue;
     premiershipClubCounts.set(pc.player_id, (premiershipClubCounts.get(pc.player_id) ?? 0) + 1);
   }
@@ -357,6 +362,7 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     }
   };
   for (const pc of opts.playerClubs) {
+    if ((pc.appearances ?? 0) < 1) continue;
     const hasStats =
       pc.appearances != null ||
       pc.goals != null ||

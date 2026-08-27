@@ -45,6 +45,7 @@ multi_goal_game: "Most Goals in a Game (Career)",
  * (used where a short sub-label alone would be misleading).
  */
 export const CATEGORY_INFO: Partial<Record<Category, string>> = {
+  club: "Must have played at least 1 game for the club.",
   managed_by:
     "Counts anyone registered at the club in a season this manager was in charge — they don't need to have played under them.",
 

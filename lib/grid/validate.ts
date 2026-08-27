@@ -92,11 +92,11 @@ export async function playerSatisfiesCriterion(
       if (!club) return false;
       const { data: member } = await db
         .from("player_clubs")
-        .select("player_id")
+        .select("appearances")
         .eq("player_id", playerId)
         .eq("club_id", club.id)
         .maybeSingle();
-      return member != null;
+      return member != null && (member.appearances ?? 0) >= 1;
     }
     case "nationality": {
       const { data: player } = await db
@@ -120,12 +120,12 @@ export async function playerSatisfiesCriterion(
       const band = bandForLabel("championships", displayLabel);
       if (!band) return false;
       // Distinct Championship-winning clubs among the player's all-time clubs
-      // (same definition as buildDataset).
+      // where they made ≥1 appearance (same definition as buildDataset).
       const { data: playerClubs } = await db
         .from("player_clubs")
-        .select("club_id")
+        .select("club_id,appearances")
         .eq("player_id", playerId);
-      const clubIds = [...new Set((playerClubs ?? []).map((r) => r.club_id))];
+      const clubIds = [...new Set((playerClubs ?? []).filter((r) => (r.appearances ?? 0) >= 1).map((r) => r.club_id))];
       if (clubIds.length === 0) return false;
       const { count } = await db
         .from("club_titles")
@@ -140,9 +140,9 @@ export async function playerSatisfiesCriterion(
       if (!band) return false;
       const { data: rows } = await db
         .from("player_clubs")
-        .select("club_id")
+        .select("club_id,appearances")
         .eq("player_id", playerId);
-      const distinct = new Set((rows ?? []).map((r) => r.club_id)).size;
+      const distinct = new Set((rows ?? []).filter((r) => (r.appearances ?? 0) >= 1).map((r) => r.club_id)).size;
       return distinct >= band.min && distinct <= band.max;
     }
     case "debut_age": {
@@ -223,12 +223,12 @@ export async function playerSatisfiesCriterion(
     case "premierships": {
       const band = bandForLabel("premierships", displayLabel);
       if (!band) return false;
-      // Distinct Premiership-winning clubs among the player's all-time clubs.
+      // Distinct Premiership-winning clubs among the player's all-time clubs where ≥1 game.
       const { data: pcRows } = await db
         .from("player_clubs")
-        .select("club_id")
+        .select("club_id,appearances")
         .eq("player_id", playerId);
-      const clubIds = [...new Set((pcRows ?? []).map((r) => r.club_id))];
+      const clubIds = [...new Set((pcRows ?? []).filter((r) => (r.appearances ?? 0) >= 1).map((r) => r.club_id))];
       if (clubIds.length === 0) return false;
       const { count } = await db
         .from("premiership_seasons")
@@ -347,6 +347,7 @@ export async function playerSatisfiesClubStatCell(
     .eq("club_id", club.id)
     .maybeSingle();
   if (!row) return false;
+  if ((row.appearances ?? 0) < 1) return false;
 
   const band = bandForLabel(statCategory, statLabel);
   if (!band) return false;
