@@ -440,7 +440,7 @@ export async function describeStatValue(
     if (!club) return `${playerName} never played for ${clubName}`;
     const { data: row } = await db
       .from("player_clubs")
-      .select("appearances,goals,yellow_cards,red_cards,wins,debut_age")
+      .select("appearances,goals,yellow_cards,red_cards,wins,debut_age,clean_sheets,minutes,seasons")
       .eq("player_id", playerId)
       .eq("club_id", club.id)
       .maybeSingle();
@@ -466,6 +466,36 @@ export async function describeStatValue(
         }
         const pct = Math.round((row.wins / apps) * 100);
         return `${playerName} won ${row.wins} of ${apps} games (${pct}%) for ${clubName}`;
+      }
+      case "minutes": {
+        const v = row.minutes ?? 0;
+        return `${playerName} played ${v.toLocaleString("en-AU")} minutes for ${clubName}`;
+      }
+      case "clean_sheets": {
+        const v = row.clean_sheets ?? 0;
+        return `${playerName} kept ${v} clean sheet${plural(v)} for ${clubName}`;
+      }
+      case "championships": {
+        const { data: champRows } = await db
+          .from("championship_seasons")
+          .select("season")
+          .eq("club_id", club.id);
+        const winning = new Set(((champRows ?? []) as { season: string }[]).map((r) => r.season));
+        const tenure = new Set(String(row.seasons ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+        let overlap = 0;
+        for (const s of tenure) if (winning.has(s)) overlap++;
+        return `${playerName} won ${overlap} championship${plural(overlap)} while at ${clubName}`;
+      }
+      case "premierships": {
+        const { data: premRows } = await db
+          .from("premiership_seasons")
+          .select("season")
+          .eq("club_id", club.id);
+        const winning = new Set(((premRows ?? []) as { season: string }[]).map((r) => r.season));
+        const tenure = new Set(String(row.seasons ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+        let overlap = 0;
+        for (const s of tenure) if (winning.has(s)) overlap++;
+        return `${playerName} won ${overlap} premiership${plural(overlap)} while at ${clubName}`;
       }
       default:
         break;

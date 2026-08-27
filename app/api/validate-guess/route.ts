@@ -121,13 +121,16 @@ export async function POST(request: NextRequest) {
   }
 
   if (!correct && !hint && clubAxis) {
-    // Club x Stat miss where the player isn't even at the club.
+    // Club x Stat — per-club stat phrase already includes the club name
+    // and is the relevant info for the cell (e.g. "0 minutes for Auckland FC").
     hint = await buildHint(supabase, playerId!, [
-      {
-        category: clubAxis.statCat,
-        label: clubAxis.statLabel,
-        clubName: clubAxis.clubName,
-      },
+      { category: clubAxis.statCat, label: clubAxis.statLabel, clubName: clubAxis.clubName },
+    ]);
+  } else if (!correct && rowType === "club" && colType === "club") {
+    // Club x Club — show both memberships (previously no hint).
+    hint = await buildHint(supabase, playerId!, [
+      { category: "club" as Category, label: rowValue },
+      { category: "club" as Category, label: colValue },
     ]);
   }
 
