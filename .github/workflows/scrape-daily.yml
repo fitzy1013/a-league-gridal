@@ -15,7 +15,6 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -37,16 +36,12 @@ jobs:
 
       - name: Main scrape (players, stats, memberships, titles, honours)
         run: npx tsx scripts/run-scrape.ts
-        timeout-minutes: 5
 
       - name: Player history crawl (tenure seasons, per-club CS + minutes)
         run: npx tsx scripts/scrape-player-history.ts 4
-        timeout-minutes: 25
 
       - name: Manager tenures
         run: npx tsx scripts/scrape-managers.ts
-        timeout-minutes: 5
 
       - name: Player heights
         run: npx tsx scripts/scrape-heights.ts 4
-        timeout-minutes: 10

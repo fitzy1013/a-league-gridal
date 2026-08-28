@@ -640,6 +640,15 @@ export async function describeStatValue(
       }
       return `${playerName} won ${Math.round((wins / apps) * 100)}% of matches`;
     }
+    case "height": {
+      const { data: player } = await db
+        .from("players")
+        .select("height")
+        .eq("id", playerId)
+        .maybeSingle();
+      if (player?.height != null) return `${playerName} is ${player.height}cm tall`;
+      return `${playerName} — height not listed`;
+    }
     case "debut_age": {
       const { data: rows } = await db
         .from("player_clubs")

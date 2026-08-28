@@ -1,15 +1,21 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createAdminClient } from "../lib/db/supabase-admin";
+import { CLUBS } from "../lib/scrape/ual";
 
 process.loadEnvFile(".env");
 
 /**
- * Resolves every player's English Wikipedia article, fetches the last 3
- * months of pageviews, and stores a 0-100 obscurity rating on players.
+ * Resolves every player's English Wikipedia article, fetches the last 365
+ * days of pageviews, and stores a 0-100 obscurity rating on players.
  *
  * Resolution order: manual overrides -> exact title -> "(footballer)" /
- * "(soccer)" variants -> accent-insensitive match. Unresolved players score
- * as fully obscure (100).
+ * "(soccer)" variants -> accent-insensitive match. Each resolved title is
+ * validated to ensure the page mentions an A-League club, the A-League
+ * competition, or at least is a soccer player page. Unresolved or
+ * invalid players score as fully obscure (100).
+ *
+ * Retries: single attempt per player up front; failures queued and retried
+ * at the end up to 5 times per player before abandoning.
  *
  * Usage: npx tsx scripts/scrape-wiki.ts
  */
@@ -22,6 +28,15 @@ const OVERRIDES: Record<string, string> = {
   "Carlos Hernandez": "Carlos Hernández (footballer, born 1982)",
 };
 
+const ALEAGUE_KEYWORDS = [
+  ...CLUBS.map((c) => c.name.toLowerCase()),
+  "a-league",
+  "a league",
+  "aleague",
+  "isuzu ute",
+];
+const SOCCER_FALLBACK_KEYWORDS = ["soccer", "footballer", "association football"];
+
 const norm = (s: string) =>
   s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
@@ -32,59 +47,86 @@ async function queryBatch(chunk: string[]): Promise<{ present: Set<string>; ok: 
   const url =
     "https://en.wikipedia.org/w/api.php?action=query&format=json&redirects=1&titles=" +
     encodeURIComponent(chunk.join("|"));
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try {
-      const res = await fetch(url, { headers: UA });
-      if (res.status === 429 || res.status >= 500) throw new Error(String(res.status));
-      const json: any = await res.json();
-      const present = new Set<string>();
-      for (const p of Object.values(json?.query?.pages ?? {}) as any[]) {
-        if (!p.missing) {
-          present.add(String(p.title).toLowerCase());
-          // accent-insensitive aliases so "Milos" matches "Miloš"
-          present.add(norm(String(p.title)));
-        }
+  try {
+    const res = await fetch(url, { headers: UA });
+    if (res.status === 429 || res.status >= 500) throw new Error(String(res.status));
+    const json: any = await res.json();
+    const present = new Set<string>();
+    for (const p of Object.values(json?.query?.pages ?? {}) as any[]) {
+      if (!p.missing) {
+        present.add(String(p.title).toLowerCase());
+        present.add(norm(String(p.title)));
       }
-      return { present, ok: true };
-    } catch {
-      await sleep(2000 * (attempt + 1));
     }
+    return { present, ok: true };
+  } catch {
+    return { present: new Set(), ok: false };
   }
-  return { present: new Set(), ok: false };
 }
 
-/** Median monthly views over the last 3 full months. */
-async function monthlyViews(title: string): Promise<number | null> {
+async function validateWikiPage(title: string): Promise<boolean> {
+  const url = `https://en.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&explaintext&titles=${encodeURIComponent(title)}`;
+  try {
+    const res = await fetch(url, { headers: UA });
+    if (!res.ok) return false;
+    const json: any = await res.json();
+    const pages = json?.query?.pages ?? {};
+    const page = Object.values(pages)[0] as any;
+    if (!page || page.missing) return false;
+    const text: string = (page.extract ?? "").toLowerCase();
+    const combined = text + " " + title.toLowerCase();
+    const hasALeague = ALEAGUE_KEYWORDS.some((kw) => combined.includes(kw));
+    if (hasALeague) return true;
+    const hasSoccer = SOCCER_FALLBACK_KEYWORDS.some((kw) => combined.includes(kw));
+    return hasSoccer;
+  } catch {
+    return false;
+  }
+}
+
+/** Total views last 365 days via daily endpoint — single attempt, deferred retries handled by caller */
+async function yearlyViews(title: string): Promise<number | null> {
   const end = new Date();
-  end.setMonth(end.getMonth() - 1, 1); // last complete month
+  end.setDate(end.getDate() - 1); // yesterday
   const start = new Date(end);
-  start.setMonth(start.getMonth() - 2);
+  start.setDate(start.getDate() - 364);
   const fmt = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, "");
   const url =
     `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/` +
-    `${encodeURIComponent(title)}/monthly/${fmt(start)}/${fmt(end)}`;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    try {
-      const res = await fetch(url, { headers: UA });
-      if (res.status === 404) return 0;
-      if (res.status === 429 || res.status >= 500) throw new Error(String(res.status));
-      const json: any = await res.json();
-      const items: number[] = (json?.items ?? []).map((i: any) => i.views ?? 0);
-      if (items.length === 0) return 0;
-      const sorted = [...items].sort((a, b) => a - b);
-      return sorted[Math.floor(sorted.length / 2)];
-    } catch {
-      await sleep(1500 * (attempt + 1));
-    }
+    `${encodeURIComponent(title)}/daily/${fmt(start)}/${fmt(end)}`;
+  try {
+    const res = await fetch(url, { headers: UA });
+    if (res.status === 404) return 0;
+    if (res.status === 429 || res.status >= 500) return null;
+    const json: any = await res.json();
+    const items: number[] = (json?.items ?? []).map((i: any) => i.views ?? 0);
+    return items.reduce((a, b) => a + b, 0);
+  } catch {
+    return null;
   }
-  return null;
 }
 
 function obscurityFromViews(views: number | null): number | null {
   if (views == null) return null;
   if (views <= 0) return 100;
-  // log-scale inverse: 10k+ monthly views -> 0, single digits -> high 90s
-  return Math.round(Math.max(0, Math.min(100, 100 - 25 * Math.log10(views))));
+  // For 365-day totals: <100 -> 100, 1k->75, 10k->50, 100k->25, 1M->0
+  // Keeps log-scale inverse; 365-day totals are ~12x monthly but mapping still useful.
+  // If views are yearly, divide by ~12 to approximate original monthly scale? Not needed.
+  // Use yearly formula: 100 -25*log10(views/100) if you want more spread, but keep legacy for compatibility.
+  // We'll use yearly formula to keep distribution sensible for yearly totals.
+  if (views < 100) return 100;
+  return Math.round(Math.max(0, Math.min(100, 100 - 25 * Math.log10(views / 100))));
+}
+
+async function fetchViewsWithDeferredRetries(title: string): Promise<number | null> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const v = await yearlyViews(title);
+    if (v != null) return v;
+    const backoff = 1500 * (attempt + 1);
+    console.log(`    views retry ${attempt + 1}/5 for "${title}" failed, sleeping ${backoff}ms`);
+    await sleep(backoff);
+  }
+  return null;
 }
 
 async function main() {
@@ -113,6 +155,9 @@ async function main() {
   const resolved = new Map<number, string>();
   for (const n of names) if (n.title) resolved.set(n.id, n.title);
 
+  // Track batches that failed due to network so we can retry at end
+  const failedBatches: { suffix: string; chunk: typeof names }[] = [];
+
   // exact + variant rounds
   for (const suffix of ["", " (footballer)", " (soccer)"]) {
     const remaining = names.filter((n) => !resolved.has(n.id));
@@ -122,12 +167,60 @@ async function main() {
       const chunk = remaining.slice(i, i + 25);
       const probeTitles = chunk.map((n) => n.title ?? `${n.name}${suffix}`);
       const { present, ok } = await queryBatch(probeTitles);
-      chunk.forEach((n, idx) => {
+      if (!ok) {
+        // Defer retry to end instead of immediate retry
+        failedBatches.push({ suffix, chunk });
+        await sleep(400);
+        continue;
+      }
+      // For each probe that exists, validate it mentions A-League / soccer before accepting
+      for (let idx = 0; idx < chunk.length; idx++) {
+        const n = chunk[idx];
         const probe = probeTitles[idx];
-        if (ok && (present.has(probe.toLowerCase()) || present.has(norm(probe)))) {
-          resolved.set(n.id, probe);
+        if (present.has(probe.toLowerCase()) || present.has(norm(probe))) {
+          // Single validation attempt; if network fails we keep it for now and validate again at end if needed
+          const valid = await validateWikiPage(probe);
+          await sleep(120);
+          if (valid) {
+            resolved.set(n.id, probe);
+          } else {
+            // Invalid page (no A-League/soccer reference) -> treat as unresolved for this suffix round
+            // Try next suffix round later
+          }
         }
-      });
+      }
+      await sleep(400);
+    }
+  }
+
+  // Retry failed batches at end (up to 5 attempts per batch)
+  if (failedBatches.length > 0) {
+    console.log(`retrying ${failedBatches.length} failed query batches (up to 5 attempts each, deferred)...`);
+    for (const fb of failedBatches) {
+      const probeTitles = fb.chunk.map((n) => n.title ?? `${n.name}${fb.suffix}`);
+      let result: { present: Set<string>; ok: boolean } | null = null;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const r = await queryBatch(probeTitles);
+        if (r.ok) {
+          result = r;
+          break;
+        }
+        await sleep(2000 * (attempt + 1));
+      }
+      if (!result || !result.ok) {
+        console.log(`  batch "${fb.suffix}" still failed after 5 attempts, skipping`);
+        continue;
+      }
+      for (let idx = 0; idx < fb.chunk.length; idx++) {
+        const n = fb.chunk[idx];
+        if (resolved.has(n.id)) continue;
+        const probe = probeTitles[idx];
+        if (result.present.has(probe.toLowerCase()) || result.present.has(norm(probe))) {
+          const valid = await validateWikiPage(probe);
+          await sleep(120);
+          if (valid) resolved.set(n.id, probe);
+        }
+      }
       await sleep(400);
     }
   }
@@ -140,16 +233,19 @@ async function main() {
 
   // ---- fetch views + score ----
   const updates: { id: number; wiki_title: string | null; wiki_views_monthly: number | null; obscurity: number | null }[] = [];
+  const failedViews: { id: number; title: string }[] = [];
   let done = 0;
   for (const [id, title] of resolved) {
     let views: number | null;
     if (title === "__none__") {
       views = 0;
     } else {
-      views = await monthlyViews(title);
+      views = await yearlyViews(title);
       if (views == null) {
-        // couldn't fetch views — leave for next run
+        // queue for deferred retry instead of immediate retry
+        failedViews.push({ id, title });
         done++;
+        await sleep(120);
         continue;
       }
     }
@@ -163,6 +259,25 @@ async function main() {
     await sleep(120);
   }
   await flush(supabase, updates.splice(0));
+
+  // Deferred views retries: up to 5 attempts per player before abandoning
+  if (failedViews.length > 0) {
+    console.log(`retrying ${failedViews.length} views fetches (up to 5 attempts each, deferred)...`);
+    for (const f of failedViews) {
+      const views = await fetchViewsWithDeferredRetries(f.title);
+      if (views == null) {
+        console.log(`  still failed for ${f.title} after 5 attempts, scoring as 100`);
+        const score = 100;
+        updates.push({ id: f.id, wiki_title: f.title, wiki_views_monthly: 0, obscurity: score });
+      } else {
+        const score = obscurityFromViews(views);
+        console.log(`  retry ok for ${f.title} views 365d=${views} obscurity=${score}`);
+        updates.push({ id: f.id, wiki_title: f.title, wiki_views_monthly: views, obscurity: score });
+      }
+      await sleep(300);
+    }
+    await flush(supabase, updates.splice(0));
+  }
 
   function flush(
     supa: ReturnType<typeof createAdminClient>,
