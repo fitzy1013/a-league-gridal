@@ -5,8 +5,9 @@ import { CLUBS } from "../lib/scrape/ual";
 process.loadEnvFile(".env");
 
 /**
- * Resolves every player's English Wikipedia article, fetches the last 365
- * days of pageviews, and stores a 0-100 obscurity rating on players.
+ * Resolves every player's English Wikipedia article, fetches the last
+ * month's pageviews (single monthly request per player), and stores a
+ * 0-100 obscurity rating on players.
  *
  * Resolution order: manual overrides -> exact title -> "(footballer)" /
  * "(soccer)" variants -> accent-insensitive match. Each resolved title is
@@ -16,6 +17,8 @@ process.loadEnvFile(".env");
  *
  * Retries: single attempt per player up front; failures queued and retried
  * at the end up to 5 times per player before abandoning.
+ * Obscurity: <=30 views = 100, then 100 - 25*log10(views/30) (30->100,
+ * 300->75, 3k->50, 30k->25, 300k->0).
  *
  * Usage: npx tsx scripts/scrape-wiki.ts
  */
@@ -84,17 +87,15 @@ async function validateWikiPage(title: string): Promise<boolean> {
   }
 }
 
-/** Total views last 365 days via monthly endpoint (12 months, single request) — single attempt, deferred retries handled by caller */
+/** Total views last complete month via monthly endpoint — single attempt, deferred retries handled by caller */
 async function yearlyViews(title: string): Promise<number | null> {
-  const end = new Date();
-  end.setMonth(end.getMonth() - 1);
-  end.setDate(1); // last complete month
-  const start = new Date(end);
-  start.setMonth(start.getMonth() - 11); // 12 months inclusive ~365 days
-  const fmt = (d: Date) => d.toISOString().slice(0, 7).replace(/-/g, "") + "01";
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  d.setDate(1); // last complete month
+  const fmt = d.toISOString().slice(0, 7).replace(/-/g, "") + "01";
   const url =
     `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/` +
-    `${encodeURIComponent(title)}/monthly/${fmt(start)}/${fmt(end)}`;
+    `${encodeURIComponent(title)}/monthly/${fmt}/${fmt}`;
   try {
     const res = await fetch(url, { headers: UA });
     if (res.status === 404) return 0;
@@ -109,14 +110,9 @@ async function yearlyViews(title: string): Promise<number | null> {
 
 function obscurityFromViews(views: number | null): number | null {
   if (views == null) return null;
-  if (views <= 0) return 100;
-  // For 365-day totals: <100 -> 100, 1k->75, 10k->50, 100k->25, 1M->0
-  // Keeps log-scale inverse; 365-day totals are ~12x monthly but mapping still useful.
-  // If views are yearly, divide by ~12 to approximate original monthly scale? Not needed.
-  // Use yearly formula: 100 -25*log10(views/100) if you want more spread, but keep legacy for compatibility.
-  // We'll use yearly formula to keep distribution sensible for yearly totals.
-  if (views < 100) return 100;
-  return Math.round(Math.max(0, Math.min(100, 100 - 25 * Math.log10(views / 100))));
+  if (views <= 30) return 100;
+  // 30->100, 300->75, 3k->50, 30k->25, 300k->0 (views = last month)
+  return Math.round(Math.max(0, Math.min(100, 100 - 25 * Math.log10(views / 30))));
 }
 
 async function fetchViewsWithDeferredRetries(title: string): Promise<number | null> {

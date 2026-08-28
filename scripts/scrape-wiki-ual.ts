@@ -12,9 +12,10 @@ process.loadEnvFile(".env");
  * - If no link exists -> attempt Wikipedia search for "(footballer)/(soccer)"
  *   variants, but ONLY accept a page that mentions an A-League club, the
  *   A-League competition, or at least "soccer"/"footballer".
- * - Fetch last 365 days of pageviews (monthly granularity, 12mo sum), then score
- *   0-100 where <100 views = 100, then log scale: 100 - 25*log10(views/100)
- *   (100->100, 1k->75, 10k->50, 100k->25, 1M->0).
+ * - Fetch last month's pageviews (monthly granularity, single request
+ *   per player) to minimise API calls, then score 0-100 where <=30 views
+ *   = 100, then log scale: 100 - 25*log10(views/30) (30->100, 300->75,
+ *   3k->50, 30k->25, 300k->0).
  * - Retries: single attempt per player up front; failures queued and retried
  *   at the end up to 5 times per player before abandoning.
  *
@@ -120,17 +121,15 @@ async function findWikiTitleFallback(playerName: string): Promise<string | null>
   return null;
 }
 
-/** Total views last 365 days via monthly endpoint (12 months, single request) — single attempt, caller handles retries */
+/** Total views last complete month via monthly endpoint — single attempt, caller handles retries — minimises API calls to 1/player */
 async function yearlyViews(title: string): Promise<number | null> {
-  const end = new Date();
-  end.setMonth(end.getMonth() - 1);
-  end.setDate(1); // last complete month
-  const start = new Date(end);
-  start.setMonth(start.getMonth() - 11); // 12 months inclusive ~365 days
-  const fmt = (d: Date) => d.toISOString().slice(0, 7).replace(/-/g, "") + "01";
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  d.setDate(1); // last complete month
+  const fmt = d.toISOString().slice(0, 7).replace(/-/g, "") + "01";
   const url =
     `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/` +
-    `${encodeURIComponent(title.replace(/ /g, "_"))}/monthly/${fmt(start)}/${fmt(end)}`;
+    `${encodeURIComponent(title.replace(/ /g, "_"))}/monthly/${fmt}/${fmt}`;
   try {
     const res = await fetch(url, { headers: UA });
     if (res.status === 404) return 0;
@@ -147,9 +146,9 @@ async function yearlyViews(title: string): Promise<number | null> {
 
 function obscurityFromYearlyViews(views: number | null): number | null {
   if (views == null) return null;
-  if (views < 100) return 100;
-  // 100->100, 1k->75, 10k->50, 100k->25, 1M->0 (views = last 365 days)
-  const score = 100 - 25 * Math.log10(views / 100);
+  if (views <= 30) return 100;
+  // 30->100, 300->75, 3k->50, 30k->25, 300k->0 (views = last month)
+  const score = 100 - 25 * Math.log10(views / 30);
   return Math.round(Math.max(0, Math.min(100, score)));
 }
 
