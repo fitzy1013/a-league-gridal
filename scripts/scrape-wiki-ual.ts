@@ -54,22 +54,22 @@ function extractWikiTitle(html: string): string | null {
 
 /** Check if a Wikipedia page mentions A-League clubs/competition or at least soccer */
 async function validateWikiPage(title: string): Promise<boolean> {
-  // Fetch summary + extracts via Wikipedia API.
-  // Use extracts prop for full intro text.
   const url = `https://en.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&explaintext&titles=${encodeURIComponent(title)}`;
   try {
     const res = await fetch(url, { headers: UA });
+    if (res.status === 429) {
+      const ra = Number(res.headers.get("retry-after") || "2");
+      await sleep(ra * 1000 + 500);
+      return false;
+    }
     if (!res.ok) return false;
     const json: any = await res.json();
     const pages = json?.query?.pages ?? {};
     const page = Object.values(pages)[0] as any;
     if (!page || page.missing) return false;
     const text: string = (page.extract ?? "").toLowerCase();
-    // Also check title itself for soccer/footballer hint (some pages have it)
     const titleLower = title.toLowerCase();
     const combined = text + " " + titleLower;
-    // Must contain an A-League keyword OR at least soccer fallback if no club mention.
-    // We require A-League reference if possible, but allow soccer/footballer as minimum.
     const hasALeague = ALEAGUE_KEYWORDS.some((kw) => combined.includes(kw));
     if (hasALeague) return true;
     const hasSoccer = SOCCER_FALLBACK_KEYWORDS.some((kw) => combined.includes(kw));
@@ -85,7 +85,12 @@ async function queryBatchExists(titles: string[]): Promise<{ present: Set<string
     encodeURIComponent(titles.join("|"));
   try {
     const res = await fetch(url, { headers: UA });
-    if (res.status === 429 || res.status >= 500) throw new Error(String(res.status));
+    if (res.status === 429) {
+      const ra = Number(res.headers.get("retry-after") || "2");
+      await sleep(ra * 1000 + 500);
+      throw new Error(String(res.status));
+    }
+    if (res.status >= 500) throw new Error(String(res.status));
     const json: any = await res.json();
     const present = new Set<string>();
     for (const p of Object.values(json?.query?.pages ?? {}) as any[]) {
@@ -107,38 +112,45 @@ async function findWikiTitleFallback(playerName: string): Promise<string | null>
     `${playerName} (footballer)`,
     `${playerName} (soccer)`,
   ];
-  // Batch check existence first (single attempt, no inline retry - will be retried at end if needed)
   const { present, ok } = await queryBatchExists(candidates);
-  if (!ok) return null; // treat as no link this pass; will be retried via outer queue if needed
+  if (!ok) return null;
   for (const cand of candidates) {
     const exists = present.has(cand.toLowerCase()) || present.has(norm(cand));
     if (!exists) continue;
     const valid = await validateWikiPage(cand);
-    // small throttle
-    await sleep(150);
+    await sleep(300);
     if (valid) return cand;
   }
   return null;
 }
 
-/** Total views last complete month via monthly endpoint — single attempt, caller handles retries — minimises API calls to 1/player */
+/** Total views last complete month via monthly endpoint — single attempt, deferred retries handled by caller */
 async function yearlyViews(title: string): Promise<number | null> {
-  const d = new Date();
-  d.setMonth(d.getMonth() - 1);
-  d.setDate(1); // last complete month
-  const fmt = d.toISOString().slice(0, 7).replace(/-/g, "") + "01";
+  const now = new Date();
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 1, 1));
+  const fmt = (d: Date) => `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}01`;
   const url =
     `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/` +
-    `${encodeURIComponent(title.replace(/ /g, "_"))}/monthly/${fmt}/${fmt}`;
+    `${encodeURIComponent(title.replace(/ /g, "_"))}/monthly/${fmt(start)}/${fmt(end)}`;
   try {
     const res = await fetch(url, { headers: UA });
     if (res.status === 404) return 0;
-    if (res.status === 429 || res.status >= 500) {
+    if (res.status === 429) {
+      const ra = Number(res.headers.get("retry-after") || "5");
+      await sleep(ra * 1000 + 500);
       return null;
     }
+    if (res.status >= 500) return null;
     const json: any = await res.json();
-    const items: number[] = (json?.items ?? []).map((i: any) => i.views ?? 0);
-    return items.reduce((a, b) => a + b, 0);
+    const items: any[] = json?.items ?? [];
+    const targetTs = fmt(start) + "00";
+    const hit = items.find((i) => String(i.timestamp) === targetTs);
+    if (hit) return hit.views ?? 0;
+    if (items.length === 1) return items[0].views ?? 0;
+    const full = items.filter((i) => String(i.timestamp) !== fmt(end) + "00");
+    if (full.length > 0) return full.reduce((a: number, b: any) => a + (b.views ?? 0), 0);
+    return items.reduce((a: number, b: any) => a + (b.views ?? 0), 0);
   } catch {
     return null;
   }
@@ -228,7 +240,7 @@ async function main() {
       }
       score = obscurityFromYearlyViews(views);
       updates.push({ id: p.id, wiki_title: title, wiki_views_monthly: views, obscurity: score });
-      if (withLink <= 5) console.log(`  ${p.name} -> "${title}" views 365d=${views} obscurity=${score}`);
+      console.log(`  FOUND ${p.name} (${p.id}) -> "${title}" views=${views} obscurity=${score}${usedFallback ? " [fallback]" : ""}`);
     }
 
     done++;
@@ -240,27 +252,22 @@ async function main() {
   }
   await flush(supabase, updates.splice(0));
 
-  // Retry fallback discovery at end (for those without UAL link where initial batch may have failed)
+  // Retry fallback discovery at end — throttled
   if (failedFallback.length > 0) {
     console.log(`retrying fallback discovery for ${failedFallback.length} players without UAL link...`);
-    // Filter to those still without wiki_title in updates (i.e., scored as 100)
     const pendingFallback = failedFallback.filter((f) => !updates.some((u) => u.id === f.id && u.wiki_title != null));
-    // Actually we need to re-process those that are in updates as withoutLink but could have fallback on retry
-    // Simpler: re-attempt findWikiTitleFallback for each queued, with up to 5 tries deferred
-    for (const f of pendingFallback) {
+    for (let i = 0; i < pendingFallback.length; i++) {
+      const f = pendingFallback[i];
       let found: string | null = null;
       for (let attempt = 0; attempt < 5; attempt++) {
         found = await findWikiTitleFallback(f.name);
         if (found) break;
-        // If findWikiTitleFallback returns null due to network (ok=false), we retry after sleep
-        // If it returns null because page doesn't exist / validation failed, also retry but will still be null
-        await sleep(800 * (attempt + 1));
+        await sleep(3000 * (attempt + 1));
       }
       if (found) {
-        console.log(`  fallback retry ok for ${f.name} -> "${found}"`);
+        console.log(`  fallback retry ok for ${f.name} -> "${found}" [${i + 1}/${pendingFallback.length}]`);
         const views = await fetchViewsWithDeferredRetries(found);
         const score = obscurityFromYearlyViews(views ?? 0);
-        // Replace the earlier withoutLink update for this player
         const idx = updates.findIndex((u) => u.id === f.id);
         if (idx !== -1) updates.splice(idx, 1);
         withoutLink = Math.max(0, withoutLink - 1);
@@ -268,27 +275,36 @@ async function main() {
         fallbackFound++;
         updates.push({ id: f.id, wiki_title: found, wiki_views_monthly: views ?? 0, obscurity: score });
       } else {
-        console.log(`  fallback still not found for ${f.name}, keeping as 100`);
+        console.log(`  fallback still not found for ${f.name}, keeping as 100 [${i + 1}/${pendingFallback.length}]`);
       }
-      await sleep(500);
+      await sleep(1500);
+      if ((i + 1) % 10 === 0) {
+        console.log(`  throttling pause after 10 fallback retries...`);
+        await sleep(3000);
+      }
     }
     await flush(supabase, updates.splice(0));
   }
 
-  // Retry any with link but views timed out — up to 5 attempts per player, waited til end
+  // Retry any with link but views timed out — throttled to avoid burst 10→429
   if (failedViews.length > 0) {
     console.log(`retrying ${failedViews.length} with link but views timed out (up to 5 attempts each)...`);
-    for (const f of failedViews) {
+    for (let i = 0; i < failedViews.length; i++) {
+      const f = failedViews[i];
       const views = await fetchViewsWithDeferredRetries(f.title);
       if (views == null) {
-        console.log(`  still failed for ${f.name} -> "${f.title}" after 5 attempts, leaving as 100`);
+        console.log(`  still failed for ${f.name} -> "${f.title}" after 5 attempts, leaving as 100 [${i + 1}/${failedViews.length}]`);
         updates.push({ id: f.id, wiki_title: f.title, wiki_views_monthly: 0, obscurity: 100 });
       } else {
         const score = obscurityFromYearlyViews(views);
-        console.log(`  retry ok for ${f.name} -> "${f.title}" views 365d=${views} obscurity=${score}`);
+        console.log(`  retry ok for ${f.name} -> "${f.title}" views=${views} obscurity=${score} [${i + 1}/${failedViews.length}]`);
         updates.push({ id: f.id, wiki_title: f.title, wiki_views_monthly: views, obscurity: score });
       }
-      await sleep(800);
+      await sleep(1500);
+      if ((i + 1) % 10 === 0) {
+        console.log(`  throttling pause after 10 deferred retries...`);
+        await sleep(3000);
+      }
     }
     await flush(supabase, updates.splice(0));
   }
@@ -297,7 +313,7 @@ async function main() {
     for (let attempt = 0; attempt < 5; attempt++) {
       const v = await yearlyViews(title);
       if (v != null) return v;
-      const backoff = 1500 * (attempt + 1);
+      const backoff = 3000 * (attempt + 1) + Math.floor(Math.random() * 500);
       console.log(`    views retry ${attempt + 1}/5 for "${title}" failed, sleeping ${backoff}ms`);
       await sleep(backoff);
     }
@@ -315,6 +331,14 @@ async function main() {
   }
 
   console.log(`done: ${done} players, ${withLink} with Wikipedia link (${fallbackFound} via fallback), ${withoutLink} without (100)`);
+  console.log("\n=== ALL PLAYERS FOUND ===");
+  for (const u of [...updates].sort((a, b) => (a.obscurity ?? 0) - (b.obscurity ?? 0))) {
+    if (u.wiki_title) {
+      const orig = players.find((p) => p.id === u.id);
+      console.log(`${orig?.name ?? u.id} | wiki:"${u.wiki_title}" | views=${u.wiki_views_monthly} | obscurity=${u.obscurity}`);
+    }
+  }
+  console.log("=== END ALL PLAYERS FOUND ===\n");
   const dist = new Map<string, number>();
   for (const u of updates) {
     const k = u.obscurity! >= 80 ? "80+" : u.obscurity! >= 60 ? "60-79" : u.obscurity! >= 40 ? "40-59" : u.obscurity! >= 20 ? "20-39" : "0-19";

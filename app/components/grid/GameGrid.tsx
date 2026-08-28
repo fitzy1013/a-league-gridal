@@ -9,6 +9,7 @@ import { loadProgress, pruneOldProgress, saveProgress } from "./progress";
 import Cell from "./Cell";
 import GuessInput from "./GuessInput";
 import NextGridCountdown from "./NextGridCountdown";
+import ObscurityRadial from "./ObscurityRadial";
 import ResultModal from "./ResultModal";
 import ShareButton from "./ShareButton";
 import type { CellState, ClientGridSpec, PlayerOption } from "./types";
@@ -79,7 +80,7 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
   const [submitting, setSubmitting] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
-  const [, setObscurityEarned] = useState<number | null>(null);
+  const [obscurityEarned, setObscurityEarned] = useState<number | null>(null);
   const recordedRef = useRef(false);
 
   // Restore saved progress after mount (client-only, SSR-safe).
@@ -247,7 +248,7 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
               date={spec.date}
               correct={correct}
               total={size * size}
-              obscurity={null}
+              obscurity={obscurityEarned}
             />
           )}
           {!finished ? (
@@ -325,6 +326,13 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
         </p>
       )}
 
+      {(obscurityEarned != null || correct > 0) && (
+        <div className="mt-3 flex flex-col items-center gap-1 rounded-md border border-foreground/10 bg-accent/30 px-3 py-3">
+          <ObscurityRadial value={obscurityEarned ?? 0} max={900} size={88} />
+          <p className="text-xs text-muted-foreground">Progress: {obscurityEarned ?? 0} / 900</p>
+        </div>
+      )}
+
       {selected && !finished && (
         <div
           className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
@@ -395,7 +403,7 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
         total={size * size}
         counts={counts}
         answerUrl={answerUrl}
-        obscurity={null}
+        obscurity={obscurityEarned}
         onClose={() => setShowResult(false)}
       />
     </div>

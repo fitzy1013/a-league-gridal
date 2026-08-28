@@ -38,7 +38,7 @@ export default function ResultModal({
 }) {
   if (!open) return null;
 
-  const maxObscurity = rows.length * 100;
+  const maxObscurity = total * 100;
 
   const countFor = (r: number, c: number): number | null =>
     counts?.find((x) => x.r === r && x.c === c)?.count ?? null;

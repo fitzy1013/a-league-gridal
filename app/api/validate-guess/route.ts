@@ -179,20 +179,6 @@ export async function POST(request: NextRequest) {
       );
       if (phrase) parts.push(phrase);
     }
-    // Always append height feedback for incorrect guesses.
-    // If height was already one of the criteria, describeStatValue already
-    // included it — avoid duplication.
-    const hasHeightCriterion = criteria.some((c) => c.category === "height");
-    if (!hasHeightCriterion) {
-      const { data: heightRow } = await db
-        .from("players")
-        .select("height")
-        .eq("id", pid)
-        .maybeSingle();
-      const h = (heightRow as { height?: number | null } | null)?.height;
-      if (h != null) parts.push(`${name} is ${h}cm tall`);
-      else parts.push(`${name} — height not listed`);
-    }
     return parts.length > 0 ? parts.join(" · ") : null;
   }
 }

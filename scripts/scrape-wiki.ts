@@ -52,7 +52,12 @@ async function queryBatch(chunk: string[]): Promise<{ present: Set<string>; ok: 
     encodeURIComponent(chunk.join("|"));
   try {
     const res = await fetch(url, { headers: UA });
-    if (res.status === 429 || res.status >= 500) throw new Error(String(res.status));
+    if (res.status === 429) {
+      const ra = Number(res.headers.get("retry-after") || "2");
+      await sleep(ra * 1000 + 500);
+      throw new Error(String(res.status));
+    }
+    if (res.status >= 500) throw new Error(String(res.status));
     const json: any = await res.json();
     const present = new Set<string>();
     for (const p of Object.values(json?.query?.pages ?? {}) as any[]) {
@@ -71,6 +76,11 @@ async function validateWikiPage(title: string): Promise<boolean> {
   const url = `https://en.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&explaintext&titles=${encodeURIComponent(title)}`;
   try {
     const res = await fetch(url, { headers: UA });
+    if (res.status === 429) {
+      const ra = Number(res.headers.get("retry-after") || "2");
+      await sleep(ra * 1000 + 500);
+      return false;
+    }
     if (!res.ok) return false;
     const json: any = await res.json();
     const pages = json?.query?.pages ?? {};
@@ -89,20 +99,31 @@ async function validateWikiPage(title: string): Promise<boolean> {
 
 /** Total views last complete month via monthly endpoint — single attempt, deferred retries handled by caller */
 async function yearlyViews(title: string): Promise<number | null> {
-  const d = new Date();
-  d.setMonth(d.getMonth() - 1);
-  d.setDate(1); // last complete month
-  const fmt = d.toISOString().slice(0, 7).replace(/-/g, "") + "01";
+  const now = new Date();
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 1, 1));
+  const fmt = (d: Date) => `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}01`;
   const url =
     `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/` +
-    `${encodeURIComponent(title)}/monthly/${fmt}/${fmt}`;
+    `${encodeURIComponent(title)}/monthly/${fmt(start)}/${fmt(end)}`;
   try {
     const res = await fetch(url, { headers: UA });
     if (res.status === 404) return 0;
-    if (res.status === 429 || res.status >= 500) return null;
+    if (res.status === 429) {
+      const ra = Number(res.headers.get("retry-after") || "5");
+      await sleep(ra * 1000 + 500);
+      return null;
+    }
+    if (res.status >= 500) return null;
     const json: any = await res.json();
-    const items: number[] = (json?.items ?? []).map((i: any) => i.views ?? 0);
-    return items.reduce((a, b) => a + b, 0);
+    const items: any[] = json?.items ?? [];
+    const targetTs = fmt(start) + "00";
+    const hit = items.find((i) => String(i.timestamp) === targetTs);
+    if (hit) return hit.views ?? 0;
+    if (items.length === 1) return items[0].views ?? 0;
+    const full = items.filter((i) => String(i.timestamp) !== fmt(end) + "00");
+    if (full.length > 0) return full.reduce((a: number, b: any) => a + (b.views ?? 0), 0);
+    return items.reduce((a: number, b: any) => a + (b.views ?? 0), 0);
   } catch {
     return null;
   }
@@ -119,7 +140,7 @@ async function fetchViewsWithDeferredRetries(title: string): Promise<number | nu
   for (let attempt = 0; attempt < 5; attempt++) {
     const v = await yearlyViews(title);
     if (v != null) return v;
-    const backoff = 1500 * (attempt + 1);
+    const backoff = 3000 * (attempt + 1) + Math.floor(Math.random() * 500);
     console.log(`    views retry ${attempt + 1}/5 for "${title}" failed, sleeping ${backoff}ms`);
     await sleep(backoff);
   }
@@ -190,10 +211,11 @@ async function main() {
     }
   }
 
-  // Retry failed batches at end (up to 5 attempts per batch)
+  // Retry failed batches at end (up to 5 attempts per batch) — throttled
   if (failedBatches.length > 0) {
     console.log(`retrying ${failedBatches.length} failed query batches (up to 5 attempts each, deferred)...`);
-    for (const fb of failedBatches) {
+    for (let idx = 0; idx < failedBatches.length; idx++) {
+      const fb = failedBatches[idx];
       const probeTitles = fb.chunk.map((n) => n.title ?? `${n.name}${fb.suffix}`);
       let result: { present: Set<string>; ok: boolean } | null = null;
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -202,23 +224,24 @@ async function main() {
           result = r;
           break;
         }
-        await sleep(2000 * (attempt + 1));
+        await sleep(3000 * (attempt + 1));
       }
       if (!result || !result.ok) {
         console.log(`  batch "${fb.suffix}" still failed after 5 attempts, skipping`);
         continue;
       }
-      for (let idx = 0; idx < fb.chunk.length; idx++) {
-        const n = fb.chunk[idx];
+      for (let j = 0; j < fb.chunk.length; j++) {
+        const n = fb.chunk[j];
         if (resolved.has(n.id)) continue;
-        const probe = probeTitles[idx];
+        const probe = probeTitles[j];
         if (result.present.has(probe.toLowerCase()) || result.present.has(norm(probe))) {
           const valid = await validateWikiPage(probe);
-          await sleep(120);
+          await sleep(300);
           if (valid) resolved.set(n.id, probe);
         }
       }
-      await sleep(400);
+      await sleep(1500);
+      if ((idx + 1) % 10 === 0) await sleep(3000);
     }
   }
 
@@ -248,6 +271,10 @@ async function main() {
     }
     const score = obscurityFromViews(title === "__none__" ? 0 : views);
     updates.push({ id, wiki_title: title === "__none__" ? null : title, wiki_views_monthly: views, obscurity: score });
+    if (title !== "__none__") {
+      const nm = names.find((n) => n.id === id)?.name ?? String(id);
+      console.log(`  FOUND ${nm} (${id}) -> "${title}" views=${views} obscurity=${score}`);
+    }
     done++;
     if (done % 200 === 0) {
       console.log(`progress: ${done}/${names.length} scored`);
@@ -257,10 +284,11 @@ async function main() {
   }
   await flush(supabase, updates.splice(0));
 
-  // Deferred views retries: up to 5 attempts per player before abandoning
+  // Deferred views retries: up to 5 attempts per player before abandoning — throttled to avoid burst 10→429
   if (failedViews.length > 0) {
     console.log(`retrying ${failedViews.length} views fetches (up to 5 attempts each, deferred)...`);
-    for (const f of failedViews) {
+    for (let i = 0; i < failedViews.length; i++) {
+      const f = failedViews[i];
       const views = await fetchViewsWithDeferredRetries(f.title);
       if (views == null) {
         console.log(`  still failed for ${f.title} after 5 attempts, scoring as 100`);
@@ -268,10 +296,15 @@ async function main() {
         updates.push({ id: f.id, wiki_title: f.title, wiki_views_monthly: 0, obscurity: score });
       } else {
         const score = obscurityFromViews(views);
-        console.log(`  retry ok for ${f.title} views 365d=${views} obscurity=${score}`);
+        console.log(`  retry ok for ${f.title} views=${views} obscurity=${score} [${i + 1}/${failedViews.length}]`);
         updates.push({ id: f.id, wiki_title: f.title, wiki_views_monthly: views, obscurity: score });
       }
-      await sleep(300);
+      // Throttle: 1.5s between deferred retries + extra pause every 10 to respect bucket
+      await sleep(1500);
+      if ((i + 1) % 10 === 0) {
+        console.log(`  throttling pause after 10 deferred retries...`);
+        await sleep(3000);
+      }
     }
     await flush(supabase, updates.splice(0));
   }
@@ -311,6 +344,14 @@ async function main() {
   }
   const unresolvedCount = [...resolved.values()].filter((t) => t === "__none__").length;
   console.log(`done: ${done} processed, ${scored.length} scored this run, ${unresolvedCount} without a wiki article`);
+  console.log("\n=== ALL PLAYERS FOUND ===");
+  for (const u of [...updates].sort((a, b) => (a.obscurity ?? 0) - (b.obscurity ?? 0))) {
+    if (u.wiki_title) {
+      const nm = names.find((n) => n.id === u.id)?.name ?? String(u.id);
+      console.log(`${nm} | wiki:"${u.wiki_title}" | views=${u.wiki_views_monthly} | obscurity=${u.obscurity}`);
+    }
+  }
+  console.log("=== END ALL PLAYERS FOUND ===\n");
   console.log("obscurity distribution:", [...dist.entries()].sort());
 }
 
