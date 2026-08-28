@@ -12,7 +12,7 @@ process.loadEnvFile(".env");
  * - If no link exists -> attempt Wikipedia search for "(footballer)/(soccer)"
  *   variants, but ONLY accept a page that mentions an A-League club, the
  *   A-League competition, or at least "soccer"/"footballer".
- * - Fetch last 365 days of pageviews (daily granularity), sum, then score
+ * - Fetch last 365 days of pageviews (monthly granularity, 12mo sum), then score
  *   0-100 where <100 views = 100, then log scale: 100 - 25*log10(views/100)
  *   (100->100, 1k->75, 10k->50, 100k->25, 1M->0).
  * - Retries: single attempt per player up front; failures queued and retried
@@ -120,21 +120,21 @@ async function findWikiTitleFallback(playerName: string): Promise<string | null>
   return null;
 }
 
-/** Total views last 365 days via daily endpoint — single attempt, caller handles retries */
+/** Total views last 365 days via monthly endpoint (12 months, single request) — single attempt, caller handles retries */
 async function yearlyViews(title: string): Promise<number | null> {
   const end = new Date();
-  end.setDate(end.getDate() - 1); // last complete day (yesterday)
+  end.setMonth(end.getMonth() - 1);
+  end.setDate(1); // last complete month
   const start = new Date(end);
-  start.setDate(start.getDate() - 364); // 365 days inclusive
-  const fmt = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, "");
+  start.setMonth(start.getMonth() - 11); // 12 months inclusive ~365 days
+  const fmt = (d: Date) => d.toISOString().slice(0, 7).replace(/-/g, "") + "01";
   const url =
     `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/` +
-    `${encodeURIComponent(title.replace(/ /g, "_"))}/daily/${fmt(start)}/${fmt(end)}`;
+    `${encodeURIComponent(title.replace(/ /g, "_"))}/monthly/${fmt(start)}/${fmt(end)}`;
   try {
     const res = await fetch(url, { headers: UA });
     if (res.status === 404) return 0;
     if (res.status === 429 || res.status >= 500) {
-      // Let caller queue for deferred retry instead of immediate retry
       return null;
     }
     const json: any = await res.json();

@@ -84,16 +84,17 @@ async function validateWikiPage(title: string): Promise<boolean> {
   }
 }
 
-/** Total views last 365 days via daily endpoint — single attempt, deferred retries handled by caller */
+/** Total views last 365 days via monthly endpoint (12 months, single request) — single attempt, deferred retries handled by caller */
 async function yearlyViews(title: string): Promise<number | null> {
   const end = new Date();
-  end.setDate(end.getDate() - 1); // yesterday
+  end.setMonth(end.getMonth() - 1);
+  end.setDate(1); // last complete month
   const start = new Date(end);
-  start.setDate(start.getDate() - 364);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, "");
+  start.setMonth(start.getMonth() - 11); // 12 months inclusive ~365 days
+  const fmt = (d: Date) => d.toISOString().slice(0, 7).replace(/-/g, "") + "01";
   const url =
     `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/` +
-    `${encodeURIComponent(title)}/daily/${fmt(start)}/${fmt(end)}`;
+    `${encodeURIComponent(title)}/monthly/${fmt(start)}/${fmt(end)}`;
   try {
     const res = await fetch(url, { headers: UA });
     if (res.status === 404) return 0;
