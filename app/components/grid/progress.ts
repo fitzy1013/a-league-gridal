@@ -7,6 +7,7 @@ const STATUSES = new Set(["empty", "correct", "incorrect", "revealed"]);
 export interface StoredProgress {
   cells: CellState[][];
   finished: boolean;
+  obscurity?: number | null;
 }
 
 function keyFor(spec: ClientGridSpec): string | null {
@@ -21,7 +22,7 @@ export function loadProgress(spec: ClientGridSpec, size: number): StoredProgress
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { v?: number; cells?: unknown; finished?: unknown };
+    const parsed = JSON.parse(raw) as { v?: number; cells?: unknown; finished?: unknown; obscurity?: unknown };
     if (parsed.v !== 1 || !Array.isArray(parsed.cells)) return null;
     const cells = parsed.cells as CellState[][];
     if (
@@ -43,7 +44,9 @@ export function loadProgress(spec: ClientGridSpec, size: number): StoredProgress
       }
     }
     if (typeof parsed.finished !== "boolean") return null;
-    return { cells, finished: parsed.finished };
+    const obscurity =
+      typeof parsed.obscurity === "number" && Number.isFinite(parsed.obscurity) ? parsed.obscurity : null;
+    return { cells, finished: parsed.finished, obscurity };
   } catch {
     return null;
   }
@@ -53,11 +56,12 @@ export function saveProgress(
   spec: ClientGridSpec,
   cells: CellState[][],
   finished: boolean,
+  obscurity?: number | null,
 ): void {
   const key = keyFor(spec);
   if (!key || typeof window === "undefined") return;
   try {
-    const payload = JSON.stringify({ v: 1, savedAt: Date.now(), cells, finished });
+    const payload = JSON.stringify({ v: 1, savedAt: Date.now(), cells, finished, obscurity: obscurity ?? null });
     window.localStorage.setItem(key, payload);
   } catch {
     // storage unavailable/full — progress simply won't persist

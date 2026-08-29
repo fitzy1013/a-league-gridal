@@ -90,6 +90,7 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
     if (stored) {
       setCells(stored.cells);
       setFinished(stored.finished);
+      if (typeof stored.obscurity === "number") setObscurityEarned(stored.obscurity);
     }
     setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -98,8 +99,8 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
   // Persist progress on every change (daily grids only).
   useEffect(() => {
     if (!hydrated) return;
-    saveProgress(spec, cells, finished);
-  }, [hydrated, spec, cells, finished]);
+    saveProgress(spec, cells, finished, obscurityEarned);
+  }, [hydrated, spec, cells, finished, obscurityEarned]);
 
   const correct = useMemo(
     () => cells.flat().filter((c) => c.status === "correct").length,
