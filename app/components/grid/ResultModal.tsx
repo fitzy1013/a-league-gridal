@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CATEGORY_LABELS } from "@/lib/grid/labels";
@@ -40,8 +40,17 @@ export default function ResultModal({
 
   const maxObscurity = total * 100;
 
+  const [activeCell, setActiveCell] = useState<{ r: number; c: number } | null>(null);
+
   const countFor = (r: number, c: number): number | null =>
     counts?.find((x) => x.r === r && x.c === c)?.count ?? null;
+
+  const activeData = activeCell ? counts?.find((x) => x.r === activeCell.r && x.c === activeCell.c) : null;
+  const activePlayers = activeData?.players ?? [];
+  const activeLabel =
+    activeCell != null
+      ? `${spec.rowValues[activeCell.r]} × ${spec.colValues[activeCell.c]}`
+      : ""; 
 
   const headerFor = (value: string, category: string) => (
     <div className="flex min-h-14 w-full min-w-0 flex-col items-center justify-center overflow-hidden px-1 py-1.5 text-center">
@@ -132,11 +141,10 @@ export default function ResultModal({
               {Array.from({ length: row.length }, (_, c) => {
                 const count = countFor(r, c);
                 return (
-                  <a
+                  <button
                     key={`cell-${r}-${c}`}
-                    href={answerUrl(r, c)}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    type="button"
+                    onClick={() => setActiveCell({ r, c })}
                     className={`flex h-14 min-w-0 items-center justify-center rounded transition-colors hover:ring-2 hover:ring-ring ${statusClasses[row[c].status]}`}
                   >
                     {count === null ? (
@@ -146,7 +154,7 @@ export default function ResultModal({
                         {count}
                       </span>
                     )}
-                  </a>
+                  </button>
                 );
               })}
             </Fragment>
@@ -169,6 +177,53 @@ export default function ResultModal({
           </Button>
         </div>
       </div>
+
+      {activeCell && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setActiveCell(null)}>
+          <div className="w-full max-w-md rounded-xl border bg-background p-6 shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-start justify-between gap-2">
+              <div>
+                <h3 className="text-base font-bold">Answers</h3>
+                <p className="text-sm text-muted-foreground">{activeLabel}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {activeData ? `${activeData.count} ${activeData.count === 1 ? "player" : "players"} fit this cell` : "Loading..."}
+                </p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setActiveCell(null)} aria-label="Close">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="max-h-[50vh] overflow-auto">
+              {!activeData ? (
+                <p className="text-sm text-muted-foreground">Loading…</p>
+              ) : activePlayers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No players match both criteria.</p>
+              ) : (
+                <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  {activePlayers.map((p) => (
+                    <li key={p.id} className="rounded-md bg-accent px-3 py-2 text-sm font-medium">
+                      {p.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <a
+                href={answerUrl(activeCell.r, activeCell.c)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-muted-foreground underline"
+              >
+                Open full page
+              </a>
+              <Button size="sm" onClick={() => setActiveCell(null)} type="button">
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

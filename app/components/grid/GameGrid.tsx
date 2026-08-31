@@ -46,6 +46,7 @@ export interface CellAnswerCount {
   r: number;
   c: number;
   count: number;
+  players?: { id: number; name: string }[];
 }
 
 async function fetchCounts(spec: ClientGridSpec): Promise<CellAnswerCount[]> {
