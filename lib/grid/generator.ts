@@ -594,7 +594,6 @@ function cellMembers(dataset: GridDataset, a: Criterion, b: Criterion): Set<numb
     membersOf(dataset, b.category, b.label),
   );
 }
-
 const NON_CLUB_CATEGORIES: Category[] = [
   "appearances",
   "goals",
@@ -608,11 +607,11 @@ const NON_CLUB_CATEGORIES: Category[] = [
   "debut_age",
   "win_pct",
   "nationality",
-  "position",
+  // "position" disabled — per request
   "own_goals",
   "finals_goals",
   "finals_apps",
-  "height",
+  // "height" disabled — data source outdated (see issue height category)
   "managed_by",
   "golden_boot",
   "jw_medal",
@@ -620,7 +619,8 @@ const NON_CLUB_CATEGORIES: Category[] = [
   "era",
   "mid_season",
   "one_club_stint",
-  "multi_goal_game",];
+  "multi_goal_game",
+];
 
 /**
  * Category groups that are too similar to appear together in one grid; at most
