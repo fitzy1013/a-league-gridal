@@ -10,16 +10,17 @@ export const metadata = {
 };
 
 const CLUB_SPECIFIC = [
-  ["Appearances", "games played for that club"],
-  ["Goals", "goals scored for that club"],
-  ["Minutes", "minutes played for that club"],
-  ["Yellow Cards", "yellow cards received at that club"],
-  ["Red Cards", "red cards received at that club"],
-  ["Clean Sheets (GK)", "clean sheets kept for that club"],
-  ["Win %", "wins with that club ÷ games for that club"],
-  ["Debut Age", "age when the player debuted for that club"],
-  ["Championships", "grand-final titles won while registered at that club"],
-  ["Premierships", "minor-premiership titles won while registered at that club"],
+  ["Appearances", "games played for that club (≥1 game)"],
+  ["Goals", "goals scored for that club (≥1 game for the club)"],
+  ["Minutes", "minutes played for that club (≥1 game)"],
+  ["Yellow Cards", "yellow cards received at that club (≥1 game)"],
+  ["Red Cards", "red cards received at that club (≥1 game)"],
+  ["Clean Sheets (GK)", "clean sheets kept for that club (≥1 game)"],
+  ["Win %", "wins with that club ÷ games for that club (≥1 game)"],
+  ["Debut Age", "age when the player debuted for that club (≥1 game)"],
+  ["Championships", "grand-final titles won while at that club and played ≥1 game in that winning season"],
+  ["Premierships", "minor-premiership titles won while at that club and played ≥1 game in that winning season"],
+  ["Era", "2-season window — must have played ≥1 game for that club in that window (e.g. Sydney FC × 2015/16-2016/17)"],
 ];
 
 const CAREER_ONLY = [
@@ -28,14 +29,12 @@ const CAREER_ONLY = [
   ["Joe Marston Medal", "times won best-on-ground in a grand final"],
   ["Finals Apps / Finals Goals", "finals stats are tracked career-wide only"],
   ["Own Goals", "own goals are career-wide only"],
-  ["Era", "played at least one season in 2005/06 to 2010/11, 2011/12 to 2017/18, or 2018/19 to 2022/23"],
   ["Mid-Season Move", "was registered at two clubs during the same season"],
   ["Seasons at One Club", "longest spell of distinct seasons at a single club"],
   ["Most Goals in a Game", "career-best single-game tally (hat-trick = 3+)"],
-  ["Clubs", "how many A-League clubs the player has played for"],
+  ["Clubs", "how many A-League clubs the player has played for (≥1 game for each club)"],
   ["Managed By", "player just needs to be registered at the club in a season that manager was in charge"],
-  ["Height", "listed profile height — 190cm+ or 170cm or shorter"],
-  ["Nationality / Position", "attributes of the player, unchanged by clubs"],
+  ["Nationality", "nationality of the player, unchanged by clubs"],
 ];
 
 export default async function RulesPage() {
@@ -83,7 +82,7 @@ export default async function RulesPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Club × Stat cells</h2>
+        <h2 className="text-lg font-semibold">Club × Stat cells (Career)</h2>
         <p className="text-sm leading-relaxed">
           When a cell combines a club with one of the stats below, the stat must
           have been achieved <strong>at that club specifically</strong>. For

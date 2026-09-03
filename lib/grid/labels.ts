@@ -34,7 +34,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   golden_boot: "Golden Boot (Career)",
   jw_medal: "Johnny Warren Medal (Career)",
   marston_medal: "Joe Marston Medal (Career)",
-  era: "Era (Career)",
+  era: "Era",
   mid_season: "Mid-Season Move (Career)",
   one_club_stint: "Seasons at One Club (Career)",
   multi_goal_game: "Most Goals in a Game (Career)",
@@ -46,6 +46,8 @@ export const CATEGORY_LABELS: Record<Category, string> = {
  */
 export const CATEGORY_INFO: Partial<Record<Category, string>> = {
   club: "Must have played at least 1 game for the club.",
+  championships: "Must have played at least 1 game for the club in a championship-winning season.",
+  premierships: "Must have played at least 1 game for the club in a premiership-winning season.",
   managed_by:
     "Counts anyone registered at the club in a season this manager was in charge — they don't need to have played under them.",
 
@@ -168,9 +170,22 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
     { label: "1+", min: 1, max: Infinity },
   ],
   era: [
+    // Broad legacy windows (kept)
     { label: "2005/06 to 2010/11", min: 2005, max: 2010 },
     { label: "2011/12 to 2017/18", min: 2011, max: 2017 },
     { label: "2018/19 to 2022/23", min: 2018, max: 2022 },
+    // Narrow 2-season windows — heavier weighting pre-2019 via generator (see generator.ts)
+    { label: "2005/06 to 2006/07", min: 2005, max: 2006 },
+    { label: "2007/08 to 2008/09", min: 2007, max: 2008 },
+    { label: "2009/10 to 2010/11", min: 2009, max: 2010 },
+    { label: "2011/12 to 2012/13", min: 2011, max: 2012 },
+    { label: "2013/14 to 2014/15", min: 2013, max: 2014 },
+    { label: "2015/16 to 2016/17", min: 2015, max: 2016 },
+    { label: "2017/18 to 2018/19", min: 2017, max: 2018 },
+    { label: "2019/20 to 2020/21", min: 2019, max: 2020 },
+    { label: "2021/22 to 2022/23", min: 2021, max: 2022 },
+    { label: "2023/24 to 2024/25", min: 2023, max: 2024 },
+    { label: "2025/26 to 2026/27", min: 2025, max: 2026 },
   ],
   mid_season: [
     { label: "2+ Clubs in One Season", min: 1, max: Infinity },

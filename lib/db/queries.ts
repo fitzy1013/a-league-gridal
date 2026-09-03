@@ -235,6 +235,21 @@ export async function loadAllTimeStats(client: SupabaseClient): Promise<SeasonSt
   }
 }
 
+/** Per-season stats (season != 'all') used for era-constrained stat checks. No schema change — just loads existing per-season rows. */
+export async function loadPerSeasonStats(client: SupabaseClient): Promise<(SeasonStatRow & { season: string })[]> {
+  try {
+    return await fetchAllRows<SeasonStatRow & { season: string }>((from, to) =>
+      client
+        .from("player_season_stats")
+        .select("player_id,season,appearances,goals,yellow_cards,red_cards,clean_sheets,minutes,finals_appearances,finals_goals,own_goals,most_goals_game")
+        .neq("season", "all")
+        .range(from, to) as unknown as PromiseLike<PageResult<SeasonStatRow & { season: string }>>,
+    );
+  } catch {
+    return [];
+  }
+}
+
 export async function loadPlayerTitleCounts(client: SupabaseClient): Promise<PlayerTitleRow[]> {
   return fetchAllRows<PlayerTitleRow>((from, to) =>
     client.from("player_titles").select("player_id,title").range(from, to),

@@ -5,6 +5,7 @@ import {
   describeStatValue,
   playerSatisfiesClubStatCell,
   playerSatisfiesCriterion,
+  playerSatisfiesEraClubCell,
 } from "@/lib/grid/validate";
 import { isPairAwareCategory, type BandedCategory, type Category } from "@/lib/grid/types";
 import { createClient } from "@/lib/supabase/server";
@@ -92,7 +93,16 @@ export async function POST(request: NextRequest) {
         ? { clubName: colValue, statCat: rowType as BandedCategory, statLabel: rowValue, onRow: false }
         : null;
 
-  if (clubAxis) {
+  const eraClubAxis =
+    (rowType === "era" && colType === "club"
+      ? { eraLabel: rowValue, clubName: colValue }
+      : rowType === "club" && colType === "era"
+        ? { eraLabel: colValue, clubName: rowValue }
+        : null);
+
+  if (eraClubAxis) {
+    correct = await playerSatisfiesEraClubCell(supabase, playerId!, eraClubAxis.clubName, eraClubAxis.eraLabel);
+  } else if (clubAxis) {
     correct = await playerSatisfiesClubStatCell(
       supabase,
       playerId!,
@@ -120,7 +130,12 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (!correct && !hint && clubAxis) {
+  if (!correct && eraClubAxis) {
+    hint = await buildHint(supabase, playerId!, [
+      { category: "era", label: eraClubAxis.eraLabel },
+      { category: "club", label: eraClubAxis.clubName },
+    ]);
+  } else if (!correct && !hint && clubAxis) {
     // Club x Stat — per-club stat phrase already includes the club name
     // and is the relevant info for the cell (e.g. "0 minutes for Auckland FC").
     hint = await buildHint(supabase, playerId!, [
@@ -163,6 +178,24 @@ export async function POST(request: NextRequest) {
         (await getPlayer(db, pid)) as { name?: string } | null
       )?.name ?? `Player #${pid}`;
     const parts: string[] = [];
+    // Special handling for Era×Club — must have played for that club *in* that era
+    const hasEra = criteria.some((c) => c.category === "era");
+    const hasClub = criteria.some((c) => c.category === "club");
+    if (hasEra && hasClub && criteria.length === 2) {
+      const eraCrit = criteria.find((c) => c.category === "era")!;
+      const clubCrit = criteria.find((c) => c.category === "club")!;
+      const ok = await playerSatisfiesEraClubCell(db, pid, clubCrit.label, eraCrit.label);
+      if (ok) {
+        parts.push(`${name} played for ${clubCrit.label} in ${eraCrit.label}`);
+      } else {
+        const playedClub = await playerSatisfiesCriterion(db, pid, "club", clubCrit.label);
+        const inEra = await playerSatisfiesCriterion(db, pid, "era", eraCrit.label);
+        if (!playedClub) parts.push(`${name} never played for ${clubCrit.label}`);
+        else if (!inEra) parts.push(`${name} never played in ${eraCrit.label}`);
+        else parts.push(`${name} never played for ${clubCrit.label} in ${eraCrit.label}`);
+      }
+      return parts.join(" · ");
+    }
     for (const c of criteria) {
       if (c.category === "club") {
         const played = await playerSatisfiesCriterion(db, pid, "club", c.label);

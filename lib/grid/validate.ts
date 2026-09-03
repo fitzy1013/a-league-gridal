@@ -119,20 +119,42 @@ export async function playerSatisfiesCriterion(
     case "championships": {
       const band = bandForLabel("championships", displayLabel);
       if (!band) return false;
-      // Distinct Championship-winning clubs among the player's all-time clubs
-      // where they made ≥1 appearance (same definition as buildDataset).
-      const { data: playerClubs } = await db
+      // Must have played ≥1 game for the club IN a championship-winning season.
+      // Requires season-level overlap, not just ever at a champion club.
+      const { data: pcRows } = await db
         .from("player_clubs")
-        .select("club_id,appearances")
+        .select("club_id,appearances,seasons")
         .eq("player_id", playerId);
-      const clubIds = [...new Set((playerClubs ?? []).filter((r) => (r.appearances ?? 0) >= 1).map((r) => r.club_id))];
-      if (clubIds.length === 0) return false;
-      const { count } = await db
-        .from("club_titles")
-        .select("club_id", { count: "exact", head: true })
-        .eq("title", "Championship")
+      const eligible = (pcRows ?? []).filter((r) => (r.appearances ?? 0) >= 1 && r.seasons);
+      if (eligible.length === 0) return false;
+      const clubIds = [...new Set(eligible.map((r) => r.club_id))];
+      const { data: champRows } = await db
+        .from("championship_seasons")
+        .select("club_id,season")
         .in("club_id", clubIds);
-      const championClubs = count ?? 0;
+      const champByClub = new Map<number, Set<string>>();
+      for (const cr of (champRows ?? []) as { club_id: number; season: string }[]) {
+        let s = champByClub.get(cr.club_id);
+        if (!s) {
+          s = new Set<string>();
+          champByClub.set(cr.club_id, s);
+        }
+        s.add(cr.season);
+      }
+      let championClubs = 0;
+      const seen = new Set<number>();
+      for (const pc of eligible) {
+        if (seen.has(pc.club_id)) continue;
+        const winning = champByClub.get(pc.club_id);
+        if (!winning || winning.size === 0) continue;
+        const tenure = new Set(String(pc.seasons ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+        let hasWinningSeason = false;
+        for (const s of tenure) if (winning.has(s)) { hasWinningSeason = true; break; }
+        if (hasWinningSeason) {
+          championClubs++;
+          seen.add(pc.club_id);
+        }
+      }
       return championClubs >= band.min && championClubs <= band.max;
     }
     case "clubs": {
@@ -223,19 +245,41 @@ export async function playerSatisfiesCriterion(
     case "premierships": {
       const band = bandForLabel("premierships", displayLabel);
       if (!band) return false;
-      // Distinct Premiership-winning clubs among the player's all-time clubs where ≥1 game.
       const { data: pcRows } = await db
         .from("player_clubs")
-        .select("club_id,appearances")
+        .select("club_id,appearances,seasons")
         .eq("player_id", playerId);
-      const clubIds = [...new Set((pcRows ?? []).filter((r) => (r.appearances ?? 0) >= 1).map((r) => r.club_id))];
-      if (clubIds.length === 0) return false;
-      const { count } = await db
+      const eligible = (pcRows ?? []).filter((r) => (r.appearances ?? 0) >= 1 && r.seasons);
+      if (eligible.length === 0) return false;
+      const clubIds = [...new Set(eligible.map((r) => r.club_id))];
+      const { data: premRows } = await db
         .from("premiership_seasons")
-        .select("club_id", { count: "exact", head: true })
+        .select("club_id,season")
         .in("club_id", clubIds);
-      const n = count ?? 0;
-      return n >= band.min && n <= band.max;
+      const premByClub = new Map<number, Set<string>>();
+      for (const cr of (premRows ?? []) as { club_id: number; season: string }[]) {
+        let s = premByClub.get(cr.club_id);
+        if (!s) {
+          s = new Set<string>();
+          premByClub.set(cr.club_id, s);
+        }
+        s.add(cr.season);
+      }
+      let premiershipClubs = 0;
+      const seen = new Set<number>();
+      for (const pc of eligible) {
+        if (seen.has(pc.club_id)) continue;
+        const winning = premByClub.get(pc.club_id);
+        if (!winning || winning.size === 0) continue;
+        const tenure = new Set(String(pc.seasons ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+        let hasWinningSeason = false;
+        for (const s of tenure) if (winning.has(s)) { hasWinningSeason = true; break; }
+        if (hasWinningSeason) {
+          premiershipClubs++;
+          seen.add(pc.club_id);
+        }
+      }
+      return premiershipClubs >= band.min && premiershipClubs <= band.max;
     }
     case "golden_boot":
     case "jw_medal":
@@ -414,6 +458,34 @@ export async function playerSatisfiesClubStatCell(
   }
 }
 
+/**
+ * Era × Club check: must have played ≥1 game for that club *in* that era.
+ */
+export async function playerSatisfiesEraClubCell(
+  db: SupabaseClient,
+  playerId: number,
+  clubName: string,
+  eraLabel: string,
+): Promise<boolean> {
+  const band = bandForLabel("era", eraLabel);
+  if (!band) return false;
+  const { data: club } = await db.from("clubs").select("id").eq("name", clubName).maybeSingle();
+  if (!club) return false;
+  const { data: row } = await db
+    .from("player_clubs")
+    .select("appearances,seasons")
+    .eq("player_id", playerId)
+    .eq("club_id", club.id)
+    .maybeSingle();
+  if (!row || (row.appearances ?? 0) < 1) return false;
+  const tenure = String(row.seasons ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  for (const s of tenure) {
+    const y = Number(s.slice(0, 4));
+    if (y >= band.min && y <= band.max) return true;
+  }
+  return false;
+}
+
 const plural = (v: number) => (v === 1 ? "" : "s");
 
 /**
@@ -537,17 +609,31 @@ export async function describeStatValue(
         case "championships": {
           const { data: pcRows } = await db
             .from("player_clubs")
-            .select("club_id")
+            .select("club_id,appearances,seasons")
             .eq("player_id", playerId);
-          const clubIds = [...new Set((pcRows ?? []).map((r) => r.club_id))];
-          if (clubIds.length === 0) return `${playerName} played for no championship-winning clubs`;
-          const { count } = await db
-            .from("club_titles")
-            .select("club_id", { count: "exact", head: true })
-            .eq("title", "Championship")
+          const eligible = (pcRows ?? []).filter((r) => (r.appearances ?? 0) >= 1 && r.seasons);
+          if (eligible.length === 0) return `${playerName} played for no championship-winning clubs`;
+          const clubIds = [...new Set(eligible.map((r) => r.club_id))];
+          const { data: champRows } = await db
+            .from("championship_seasons")
+            .select("club_id,season")
             .in("club_id", clubIds);
-          const n = count ?? 0;
-          return `${playerName} played for ${n} championship-winning club${plural(n)}`;
+          const champByClub = new Map<number, Set<string>>();
+          for (const cr of (champRows ?? []) as { club_id: number; season: string }[]) {
+            let s = champByClub.get(cr.club_id);
+            if (!s) { s = new Set<string>(); champByClub.set(cr.club_id, s); }
+            s.add(cr.season);
+          }
+          let n = 0;
+          const seen = new Set<number>();
+          for (const pc of eligible) {
+            if (seen.has(pc.club_id)) continue;
+            const winning = champByClub.get(pc.club_id);
+            if (!winning) continue;
+            const tenure = new Set(String(pc.seasons ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+            for (const s of tenure) if (winning.has(s)) { n++; seen.add(pc.club_id); break; }
+          }
+          return `${playerName} played for ${n} championship-winning club${plural(n)} in a winning season`;
         }
         case "clubs": {
           const { data: pcRows } = await db
@@ -580,15 +666,31 @@ export async function describeStatValue(
     case "premierships": {
       const { data: pcRows } = await db
         .from("player_clubs")
-        .select("club_id")
+        .select("club_id,appearances,seasons")
         .eq("player_id", playerId);
-      const clubIds = [...new Set((pcRows ?? []).map((r) => r.club_id))];
-      if (clubIds.length === 0) return `${playerName} played for no Premiership-winning clubs`;
-      const { count } = await db
+      const eligible = (pcRows ?? []).filter((r) => (r.appearances ?? 0) >= 1 && r.seasons);
+      if (eligible.length === 0) return `${playerName} played for no Premiership-winning clubs`;
+      const clubIds = [...new Set(eligible.map((r) => r.club_id))];
+      const { data: premRows } = await db
         .from("premiership_seasons")
-        .select("club_id", { count: "exact", head: true })
+        .select("club_id,season")
         .in("club_id", clubIds);
-      return `${playerName} played for ${count ?? 0} Premiership-winning club${plural(count ?? 0)}`;
+      const premByClub = new Map<number, Set<string>>();
+      for (const cr of (premRows ?? []) as { club_id: number; season: string }[]) {
+        let s = premByClub.get(cr.club_id);
+        if (!s) { s = new Set<string>(); premByClub.set(cr.club_id, s); }
+        s.add(cr.season);
+      }
+      let n = 0;
+      const seen = new Set<number>();
+      for (const pc of eligible) {
+        if (seen.has(pc.club_id)) continue;
+        const winning = premByClub.get(pc.club_id);
+        if (!winning) continue;
+        const tenure = new Set(String(pc.seasons ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+        for (const s of tenure) if (winning.has(s)) { n++; seen.add(pc.club_id); break; }
+      }
+      return `${playerName} played for ${n} Premiership-winning club${plural(n)} in a winning season`;
     }
     case "era": {
       const tenures = await playerSeasons(db, playerId);

@@ -26,6 +26,12 @@ export interface GridPlayerView {
 export function clubStatKey(clubLabel: string, category: BandedCategory, label: string): string {
   return `${clubLabel}|${category}|${label}`;
 }
+export function eraStatKey(eraLabel: string, category: BandedCategory, label: string): string {
+  return `${eraLabel}|${category}|${label}`;
+}
+export function eraClubKey(eraLabel: string, clubId: string): string {
+  return `${eraLabel}|${clubId}`;
+}
 
 export interface Criterion {
   category: Category;
@@ -44,6 +50,10 @@ export interface GridDataset {
    * players who scored 20+ goals for club 6.
    */
   clubStatMembers: Map<string, Set<number>>;
+  /** Era-constrained stat memberships: eraLabel|category|bandLabel -> player ids who hit band *within* that era (summed per-season stats) */
+  eraStatMembers: Map<string, Set<number>>;
+  /** Era-club memberships: eraLabel|clubId -> player ids who played ≥1 game for that club in that era */
+  eraClubMembers: Map<string, Set<number>>;
 }
 
 export interface BuildDatasetOptions {
@@ -52,6 +62,8 @@ export interface BuildDatasetOptions {
   playerClubs: PlayerClubRow[];
   /** player_season_stats rows where season = 'all' */
   stats: SeasonStatRow[];
+  /** per-season stats (season != 'all') for era-constrained stat checks — no schema change */
+  perSeasonStats?: (SeasonStatRow & { season: string })[];
   /** ids of clubs that have won at least one A-League Championship */
   championClubIds: number[];
   /** season-level Championship winners: club id -> winning seasons */
@@ -188,26 +200,43 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     }
   }
 
-  // Championships: distinct Championship-winning clubs among the player's
-  // all-time clubs (player-level ring counts aren't published by UAL).
-  // Only counts clubs where the player made ≥1 appearance.
-  const championClubSet = new Set(opts.championClubIds);
+  // Championships: distinct Championship-winning clubs where the player
+  // played ≥1 game IN a championship-winning season (season-level, not just ever at club).
+  // Must have ≥1 appearance for that club and tenure seasons overlap winning seasons.
+  const championshipSeasonSets = opts.championshipSeasons ?? new Map<number, Set<string>>();
+  const championClubSets = new Map<number, Set<number>>();
+  for (const pc of opts.playerClubs) {
+    if ((pc.appearances ?? 0) < 1 || !pc.seasons) continue;
+    const winning = championshipSeasonSets.get(pc.club_id);
+    if (!winning) continue;
+    const tenure = new Set(pc.seasons.split(",").map((s) => s.trim()).filter(Boolean));
+    let hasWinningSeason = false;
+    for (const s of tenure) if (winning.has(s)) { hasWinningSeason = true; break; }
+    if (!hasWinningSeason) continue;
+    let set = championClubSets.get(pc.player_id);
+    if (!set) { set = new Set<number>(); championClubSets.set(pc.player_id, set); }
+    set.add(pc.club_id);
+  }
   const championClubCounts = new Map<number, number>();
-  for (const pc of opts.playerClubs) {
-    if ((pc.appearances ?? 0) < 1) continue;
-    if (!championClubSet.has(pc.club_id)) continue;
-    championClubCounts.set(pc.player_id, (championClubCounts.get(pc.player_id) ?? 0) + 1);
-  }
+  for (const [pid, set] of championClubSets) championClubCounts.set(pid, set.size);
 
-  // Premierships: same construction against Premiership-winning seasons.
+  // Premierships: same season-level construction.
   const premiershipSeasonSets = opts.premiershipSeasons ?? new Map<number, Set<string>>();
-  const premiershipClubSet = new Set(premiershipSeasonSets.keys());
-  const premiershipClubCounts = new Map<number, number>();
+  const premiershipClubSets = new Map<number, Set<number>>();
   for (const pc of opts.playerClubs) {
-    if ((pc.appearances ?? 0) < 1) continue;
-    if (!premiershipClubSet.has(pc.club_id)) continue;
-    premiershipClubCounts.set(pc.player_id, (premiershipClubCounts.get(pc.player_id) ?? 0) + 1);
+    if ((pc.appearances ?? 0) < 1 || !pc.seasons) continue;
+    const winning = premiershipSeasonSets.get(pc.club_id);
+    if (!winning) continue;
+    const tenure = new Set(pc.seasons.split(",").map((s) => s.trim()).filter(Boolean));
+    let hasWinningSeason = false;
+    for (const s of tenure) if (winning.has(s)) { hasWinningSeason = true; break; }
+    if (!hasWinningSeason) continue;
+    let set = premiershipClubSets.get(pc.player_id);
+    if (!set) { set = new Set<number>(); premiershipClubSets.set(pc.player_id, set); }
+    set.add(pc.club_id);
   }
+  const premiershipClubCounts = new Map<number, number>();
+  for (const [pid, set] of premiershipClubSets) premiershipClubCounts.set(pid, set.size);
 
   // Individual awards (Golden Boot / Johnny Warren / Joe Marston).
   const awardCountBy = new Map<string, number>(); // `${playerId}:${title}` -> count
@@ -408,11 +437,39 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     }
   }
 
+  // Era-constrained memberships: Era × Club must have played ≥1 game for that club *in* that era.
+  // (Era × Stat remains career-wide for now per request — no per-season sum)
+  const eraStatMembers = new Map<string, Set<number>>();
+  const eraClubMembers = new Map<string, Set<number>>();
+  const eraBands = NUMERIC_BANDS.era;
+
+  const addEraClub = (eraLabel: string, clubId: string, playerId: number) => {
+    const key = eraClubKey(eraLabel, clubId);
+    let set = eraClubMembers.get(key);
+    if (!set) { set = new Set(); eraClubMembers.set(key, set); }
+    set.add(playerId);
+  };
+
+  // Era × Club: requires seasons overlap era
+  for (const pc of opts.playerClubs) {
+    if ((pc.appearances ?? 0) < 1 || !pc.seasons) continue;
+    const tenureSeasons = pc.seasons.split(",").map((s) => s.trim()).filter(Boolean);
+    for (const band of eraBands) {
+      const inEra = tenureSeasons.some((s) => {
+        const y = Number(s.slice(0, 4));
+        return y >= band.min && y <= band.max;
+      });
+      if (inEra) addEraClub(band.label, String(pc.club_id), pc.player_id);
+    }
+  }
+
   return {
     clubs: opts.clubs.map((c) => ({ id: c.id, name: c.name })),
     players: playerMap,
     members,
     clubStatMembers,
+    eraStatMembers,
+    eraClubMembers,
   };
 }
 
@@ -572,9 +629,10 @@ function pickDistinctAssignment(cellSets: Set<number>[], rng: () => number): num
  * Players satisfying BOTH cell criteria.
  *
  * Club x pair-aware-stat cells use the per-club stat membership (e.g.
- * "Melbourne Victory x 20+ Goals" = 20+ goals FOR Melbourne Victory). Every
- * other combination — including stat x stat and club x non-pair-aware stat —
- * is a plain career-level set intersection.
+ * "Melbourne Victory x 20+ Goals" = 20+ goals FOR Melbourne Victory).
+ * Era x Club cells require the player was at that club *in* that era (seasons overlap).
+ * Every other combination — including stat x stat and club x non-pair-aware stat —
+ * is a plain career-level set intersection (Era×Stat remains career-wide per request).
  */
 function cellMembers(dataset: GridDataset, a: Criterion, b: Criterion): Set<number> {
   const clubCrit = a.category === "club" ? a : b.category === "club" ? b : null;
@@ -588,6 +646,12 @@ function cellMembers(dataset: GridDataset, a: Criterion, b: Criterion): Set<numb
       dataset.clubStatMembers.get(clubStatKey(clubCrit.label, otherCrit.category as BandedCategory, otherCrit.label)) ??
       new Set<number>()
     );
+  }
+  // Era × Club — must have played ≥1 game for that club in that era
+  if ((a.category === "era" && b.category === "club") || (a.category === "club" && b.category === "era")) {
+    const eraLabel = a.category === "era" ? a.label : b.label;
+    const clubLabel = a.category === "club" ? a.label : b.label;
+    return dataset.eraClubMembers.get(eraClubKey(eraLabel, clubLabel)) ?? new Set<number>();
   }
   return intersection(
     membersOf(dataset, a.category, a.label),
@@ -686,8 +750,19 @@ function pickCriterion(
   const candidates: { criterion: Criterion; score: number }[] = [];
   for (const category of categories) {
     for (const label of labelsFor(dataset, category, banned)) {
-      const score = criterionScore(dataset, { category, label }, constraints);
-      if (score > 0) candidates.push({ criterion: { category, label }, score });
+      let score = criterionScore(dataset, { category, label }, constraints);
+      if (score === 0) continue;
+      // Bump Era regularity overall + extra for pre-2019 2-season windows (kept internal, not shown in rules)
+      if (category === "era") {
+        const band = NUMERIC_BANDS.era.find((b) => b.label === label);
+        if (band) {
+          if (band.max < 2019) score = Math.ceil(score * 2.8);
+          else score = Math.ceil(score * 1.6);
+        } else {
+          score = Math.ceil(score * 1.6);
+        }
+      }
+      candidates.push({ criterion: { category, label }, score });
     }
   }
   if (candidates.length === 0) return null;
