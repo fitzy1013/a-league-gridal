@@ -1,6 +1,7 @@
 import { createAdminClient } from "../db/supabase-admin";
 import { loadGridDataset } from "../db/grid-loader";
-import { generateGrid, type GridDataset } from "./generator";
+import { generateGrid, setThrowbackBoost, type GridDataset } from "./generator";
+import { NUMERIC_BANDS } from "./labels";
 import type { Category, GridSpec } from "./types";
 import { todaySydneyDate } from "../dates";
 
@@ -151,15 +152,159 @@ export async function loadDailyContext(
   };
 }
 
+export type DailyTheme = "achievement" | "balanced" | "veryChallenging" | "throwback" | "deepThrowback" | "statHeavy";
+
+const ACHIEVEMENT_CATEGORIES = new Set<string>([
+  "championships",
+  "premierships",
+  "golden_boot",
+  "jw_medal",
+  "marston_medal",
+  "finals_goals",
+  "finals_apps",
+  "multi_goal_game",
+]);
+
+/** Sydney-local day-of-week → theme. Mon=achievement, Tue=balanced, Wed=veryChallenging, Thu=throwback pre-2013/14, Fri=balanced, Sat=statHeavy, Sun=deepThrowback pre-09/10 */
+export function themeForDate(dateStr: string): DailyTheme {
+  // dateStr is YYYY-MM-DD in Sydney; parse as Sydney midnight
+  const d = new Date(`${dateStr}T12:00:00+10:00`);
+  const day = d.getDay(); // 0 Sun .. 6 Sat
+  switch (day) {
+    case 1: return "achievement";
+    case 2: return "balanced";
+    case 3: return "veryChallenging";
+    case 4: return "throwback";
+    case 5: return "balanced";
+    case 6: return "statHeavy";
+    case 0: return "deepThrowback";
+    default: return "balanced";
+  }
+}
+
+export function themeLabel(theme: DailyTheme): string {
+  switch (theme) {
+    case "achievement": return "Achievement Day — ≥2 of Championships/Premierships/Awards/Finals/Multi-goal";
+    case "balanced": return "Balanced";
+    case "veryChallenging": return "Very Challenging";
+    case "throwback": return "Throwback — Era ending ≤2013/14";
+    case "deepThrowback": return "Deep Throwback — Era ending ≤09/10";
+    case "statHeavy": return "Stat Heavy";
+  }
+}
+
+function gridMeetsTheme(grid: GridSpec, theme: DailyTheme): boolean {
+  const cats = [...grid.rowTypes, ...grid.colTypes] as string[];
+  const vals = [...grid.rowValues, ...grid.colValues];
+  if (theme === "achievement") {
+    const count = cats.filter((c) => ACHIEVEMENT_CATEGORIES.has(c)).length;
+    if (count < 2) return false;
+  }
+  if (theme === "throwback") {
+    // End-year rule: must finish at most in 2013/14 (band.max <= 2013) — so 2013/14 to 2014/15 is excluded
+    const eraIndices = cats.map((c, i) => c === "era" ? i : -1).filter((i) => i >= 0);
+    if (eraIndices.length < 1) return false;
+    for (const idx of eraIndices) {
+      const band = NUMERIC_BANDS.era.find((b) => b.label === vals[idx]);
+      if (!band || band.max > 2013) return false;
+    }
+  }
+  if (theme === "deepThrowback") {
+    // End-year rule: must finish at most in 09/10 (band.max <= 2009) — so 2009/10 to 2010/11 is excluded
+    const eraIndices = cats.map((c, i) => c === "era" ? i : -1).filter((i) => i >= 0);
+    if (eraIndices.length < 1) return false;
+    for (const idx of eraIndices) {
+      const band = NUMERIC_BANDS.era.find((b) => b.label === vals[idx]);
+      if (!band || band.max > 2009) return false;
+    }
+  }
+  if (theme === "statHeavy") {
+    const numeric = new Set(["appearances","goals","minutes","win_pct","yellow_cards","red_cards","clean_sheets","debut_age","championships","premierships","own_goals","finals_goals","finals_apps","multi_goal_game"]);
+    const numericCount = cats.filter((c) => numeric.has(c)).length;
+    if (numericCount < 4) return false;
+    const clubCount = cats.filter((c) => c === "club").length;
+    if (clubCount > 1) return false;
+  }
+  return true;
+}
+
+function optionsForTheme(theme: DailyTheme): Partial<import("./generator").GenerateGridOptions> {
+  switch (theme) {
+    case "veryChallenging":
+      return { minHardCells: 3, hardCellMaxAnswers: 8, minGoodCells: 6, maxFatCells: 0, goodCandidateCount: 3 };
+    case "throwback":
+      // Lax for 2× era (otherwise infeasible) — allow any difficulty, try 2 but fallback to 1 if needed
+      return { minHardCells: 0, hardCellMaxAnswers: 50, minGoodCells: 0, maxFatCells: 9, goodCandidateCount: 1, maxSingletonCells: 3, requiredCategories: [{ category: "era", count: 1 }] };
+    case "deepThrowback":
+      return { minHardCells: 0, hardCellMaxAnswers: 50, minGoodCells: 0, maxFatCells: 9, goodCandidateCount: 1, maxSingletonCells: 3, requiredCategories: [{ category: "era", count: 1 }] };
+    case "statHeavy":
+      return { minHardCells: 1, hardCellMaxAnswers: 10, minGoodCells: 4, maxFatCells: 2, minDistinctClubs: 0, maxDistinctClubs: 1 };
+    case "achievement":
+      return { minHardCells: 1, hardCellMaxAnswers: 10, minGoodCells: 4, maxFatCells: 2 };
+    case "balanced":
+    default:
+      return {};
+  }
+}
+
 /** Generates a candidate grid from a context without touching the database. */
-export function buildDailyCandidate(ctx: DailyContext): GridSpec {
-  return generateGrid(ctx.dataset, {
+export function buildDailyCandidate(ctx: DailyContext, themeOverride?: DailyTheme): GridSpec {
+  const dateForTheme = (ctx as any).dateForTheme as string | undefined;
+  const theme = themeOverride ?? (dateForTheme ? themeForDate(dateForTheme) : "balanced");
+  // For throwback / deepThrowback, don't ban era criteria
+  const bannedForTheme = theme === "throwback" || theme === "deepThrowback"
+    ? ctx.bannedCriteria.filter((c) => !c.startsWith("era:"))
+    : ctx.bannedCriteria;
+  const baseOpts = {
     exclude: ctx.exclude,
     minDiffCriteria: 2,
     excludeClubs: ctx.excludedClubs,
-    excludeCriteria: ctx.bannedCriteria,
+    excludeCriteria: bannedForTheme,
     clubWeights: CLUB_WEIGHTS,
-  });
+  };
+  const themeOpts = optionsForTheme(theme);
+
+  // For throwback / deepThrowback, restrict era by filtering dataset + boost
+  let datasetForTheme = ctx.dataset;
+  const eraCap = theme === "throwback" ? 2013 : theme === "deepThrowback" ? 2009 : null;
+  if (eraCap !== null) {
+    setThrowbackBoost(true);
+    const filteredMembers = { ...ctx.dataset.members };
+    const eraMap = new Map<string, Set<number>>();
+    for (const [label, set] of ctx.dataset.members["era"]) {
+      const band = NUMERIC_BANDS.era.find((b) => b.label === label);
+      if (band && band.max <= eraCap) eraMap.set(label, set);
+    }
+    filteredMembers["era"] = eraMap;
+    datasetForTheme = { ...ctx.dataset, members: filteredMembers as any, eraClubMembers: ctx.dataset.eraClubMembers, eraStatMembers: ctx.dataset.eraStatMembers } as GridDataset;
+  } else {
+    setThrowbackBoost(false);
+  }
+
+  // Try up to 500 times to meet theme-specific category requirements
+  let bestGrid: GridSpec | null = null;
+  let bestEraCount = -1;
+  for (let attempt = 0; attempt < 500; attempt++) {
+    const grid = generateGrid(datasetForTheme, { ...baseOpts, ...themeOpts });
+    if (gridMeetsTheme(grid, theme)) {
+      if (theme === "throwback" || theme === "deepThrowback") setThrowbackBoost(false);
+      return grid;
+    }
+    if (theme === "throwback" || theme === "deepThrowback") {
+      const eraCount = [...grid.rowTypes, ...grid.colTypes].filter((c) => c === "era").length;
+      if (eraCount > bestEraCount) {
+        bestEraCount = eraCount;
+        bestGrid = grid;
+      }
+    }
+    if (theme === "balanced" || theme === "veryChallenging") {
+      return grid;
+    }
+  }
+  // Fallback: return best attempt for throwback, otherwise random
+  setThrowbackBoost(false);
+  if (bestGrid) return bestGrid;
+  return generateGrid(datasetForTheme, { ...baseOpts, ...themeOpts });
 }
 
 /** Upserts a spec as the daily grid for the given (default: today's) date. */
@@ -198,10 +343,11 @@ export interface GeneratedDailyResult {
  */
 export async function generateDailyGrid(
   dataset?: GridDataset,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; themeOverride?: DailyTheme },
 ): Promise<GeneratedDailyResult> {
   const supabase = createAdminClient();
   const date = todaySydneyDate();
+  const theme = opts?.themeOverride ?? themeForDate(date);
 
   if (!opts?.force) {
     const { data: existing } = await supabase
@@ -222,7 +368,7 @@ export async function generateDailyGrid(
   }
 
   const ctx = await loadDailyContext(supabase, dataset);
-  const grid = buildDailyCandidate(ctx);
+  const grid = buildDailyCandidate(ctx, theme);
   await storeDailyGrid(supabase, grid, date);
   return { date, grid, upserted: true };
 }

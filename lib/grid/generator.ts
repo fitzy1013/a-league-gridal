@@ -13,6 +13,11 @@ import type {
 } from "./types";
 import { isPairAwareCategory } from "./types";
 
+let throwbackBoost = false;
+export function setThrowbackBoost(v: boolean) {
+  throwbackBoost = v;
+}
+
 export interface GridPlayerView {
   id: number;
   name: string;
@@ -754,13 +759,15 @@ function pickCriterion(
       let score = criterionScore(dataset, { category, label }, constraints);
       if (score === 0) continue;
       // Bump Era regularity overall + extra for pre-2019 2-season windows (kept internal, not shown in rules)
+      // Throwback gets an extra boost to ensure 2× pre-2018 eras
       if (category === "era") {
         const band = NUMERIC_BANDS.era.find((b) => b.label === label);
+        const isThrowback = throwbackBoost;
         if (band) {
-          if (band.max < 2019) score = Math.ceil(score * 2.8);
-          else score = Math.ceil(score * 1.6);
+          if (band.max < 2019) score = Math.ceil(score * (isThrowback ? 20 : 2.8));
+          else score = Math.ceil(score * (isThrowback ? 8 : 1.6));
         } else {
-          score = Math.ceil(score * 1.6);
+          score = Math.ceil(score * (isThrowback ? 8 : 1.6));
         }
       }
       candidates.push({ criterion: { category, label }, score });
@@ -773,9 +780,16 @@ function pickCriterion(
   const ranked = shuffle(candidates, rng).sort((a, b) => b.score - a.score);
   const feasible = ranked.filter((c) => c.score >= 2);
   let base = feasible.length >= 2 ? feasible : ranked;
-  const rightSized = base.filter(
+  let rightSized = base.filter(
     (c) => membersOf(dataset, c.criterion.category, c.criterion.label).size <= MAX_LABEL_SET_SIZE,
   );
+  // For throwback, keep pre-2018 era large sets (broad windows) even if >400 — needed for 2× era feasibility
+  if (throwbackBoost) {
+    const extra = base.filter(
+      (c) => c.criterion.category === "era" && !rightSized.includes(c) && membersOf(dataset, c.criterion.category, c.criterion.label).size > 0,
+    );
+    if (extra.length > 0) rightSized = [...rightSized, ...extra];
+  }
   if (rightSized.length >= 2) base = rightSized;
   const best = base[0].score;
   if (mode === "best") {
@@ -795,6 +809,8 @@ export interface GenerateGridOptions {
   rng?: () => number;
   /** guaranteed distinct clubs across rows + columns (>= 4 per spec) */
   minDistinctClubs?: number;
+  /** cap distinct clubs (e.g., statHeavy max 1) */
+  maxDistinctClubs?: number;
   /** max cells that have exactly one answer (default 1) */
   maxSingletonCells?: number;
   /** a cell is "good" when it has at least this many answers (default 3) */
@@ -826,6 +842,8 @@ export interface GenerateGridOptions {
   /** per-club selection weights keyed by club display name (default 1);
    * lower weights make a club appear less often */
   clubWeights?: Record<string, number>;
+  /** categories that must appear at least N times (e.g., throwback 1× era pre-2013/14) */
+  requiredCategories?: { category: Category; count: number }[];
 }
 
 export const DEFAULT_HARD_CELL_MAX_ANSWERS = 10;
@@ -833,6 +851,7 @@ export const DEFAULT_HARD_CELL_MAX_ANSWERS = 10;
 export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {}): GridSpec {
   const size = opts.size ?? GRID_SIZE;
   const minDistinctClubs = opts.minDistinctClubs ?? 3;
+  const maxDistinctClubs = opts.maxDistinctClubs;
   const maxSingletonCells = opts.maxSingletonCells ?? 1;
   const goodCandidateCount = opts.goodCandidateCount ?? 3;
   const minGoodCells = opts.minGoodCells ?? Math.ceil((size * size) / 2);
@@ -855,7 +874,8 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
     weightsById.set(c.id, w != null && w > 0 ? w : 1);
   }
   const rng = opts.rng ?? Math.random;
-  const maxAttempts = 400;
+  const maxAttempts = throwbackBoost ? 800 : 400;
+  const requiredCategories = opts.requiredCategories ?? [];
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
@@ -863,6 +883,7 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
         dataset,
         size,
         minDistinctClubs,
+        maxDistinctClubs,
         maxSingletonCells,
         goodCandidateCount,
         minGoodCells,
@@ -877,6 +898,7 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
         columnMinShared,
         weightsById,
         rng,
+        requiredCategories,
       );
     } catch {
       // re-roll
@@ -889,6 +911,7 @@ function tryGenerate(
   dataset: GridDataset,
   size: number,
   minDistinctClubs: number,
+  maxDistinctClubs: number | undefined,
   maxSingletonCells: number,
   goodCandidateCount: number,
   minGoodCells: number,
@@ -903,6 +926,7 @@ function tryGenerate(
   columnMinShared: number,
   weightsById: Map<number, number>,
   rng: () => number,
+  requiredCategories: { category: Category; count: number }[],
 ): GridSpec {
   if (size < 2) throw new Error("size must be >= 2");
 
@@ -918,10 +942,29 @@ function tryGenerate(
   // least one club on each axis so club x stat cells exist. Drawn below 0.75
   // because 3-club attempts survive the difficulty gates slightly more often,
   // which would otherwise skew the surviving distribution to ~80/20.
-  const targetClubs = Math.max(minDistinctClubs, rng() < 0.9 ? 3 : 4);
-  let kR = 1 + Math.floor(rng() * (targetClubs - 1));
-  kR = Math.min(kR, size);
-  const kC = Math.min(targetClubs - kR, size);
+  // maxDistinctClubs caps this (e.g., statHeavy max 1).
+  let targetClubs = Math.max(minDistinctClubs, rng() < 0.9 ? 3 : 4);
+  if (maxDistinctClubs !== undefined) targetClubs = Math.min(targetClubs, maxDistinctClubs);
+  if (targetClubs < minDistinctClubs) throw new Error("minDistinctClubs > maxDistinctClubs");
+  let kR: number;
+  let kC: number;
+  if (targetClubs === 0) {
+    kR = 0;
+    kC = 0;
+  } else if (targetClubs === 1) {
+    // Randomize axis so the single club isn't always a row
+    if (rng() < 0.5) {
+      kR = 1;
+      kC = 0;
+    } else {
+      kR = 0;
+      kC = 1;
+    }
+  } else {
+    kR = 1 + Math.floor(rng() * (targetClubs - 1));
+    kR = Math.min(kR, size);
+    kC = Math.min(targetClubs - kR, size);
+  }
 
   let rowCrits: Criterion[] = [];
   let colCrits: Criterion[] = [];
@@ -993,10 +1036,35 @@ function tryGenerate(
     ),
   );
   nonClubPool.push(reservedCategory);
+  // Enforce required categories (e.g., throwback 1× era pre-2013/14)
+  if (requiredCategories.length > 0) {
+    for (const req of requiredCategories) {
+      const countInPool = nonClubPool.filter((c) => c === req.category).length;
+      const need = req.count - countInPool;
+      for (let i = 0; i < need; i++) {
+        if (nonClubPool.length >= totalNonClub) {
+          const idx = nonClubPool.findIndex((c) => !requiredCategories.some((r: { category: Category; count: number }) => r.category === c));
+          if (idx >= 0) nonClubPool.splice(idx, 1);
+          else nonClubPool.pop();
+        }
+        nonClubPool.push(req.category);
+      }
+    }
+  }
   // Single shuffle split disjointly: a category never appears on both axes.
-  const shuffledPool = shuffle(nonClubPool, rng);
-  const rowCategories = shuffledPool.slice(0, size - kR);
-  const colCategories = shuffledPool.slice(size - kR);
+  let shuffledPool = shuffle(nonClubPool, rng);
+  let rowCategories = shuffledPool.slice(0, size - kR);
+  let colCategories = shuffledPool.slice(size - kR);
+  // Throwback 2× era must be on same axis to avoid era×era empty intersection (disjoint 2-year windows)
+  if (throwbackBoost && rowCategories.filter((c) => c === "era").length === 1 && colCategories.filter((c) => c === "era").length === 1) {
+    const rowNonEraIdx = rowCategories.findIndex((c) => c !== "era");
+    const colEraIdx = colCategories.findIndex((c) => c === "era");
+    if (rowNonEraIdx >= 0 && colEraIdx >= 0) {
+      const tmp = rowCategories[rowNonEraIdx];
+      rowCategories[rowNonEraIdx] = colCategories[colEraIdx];
+      colCategories[colEraIdx] = tmp;
+    }
+  }
 
   // Pick a criterion per slot. If the assigned category has no feasible label
   // against the current cross-axis constraints, swap in another category from
