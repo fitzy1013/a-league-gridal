@@ -149,10 +149,10 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
     clubCounts.set(pc.player_id, (clubCounts.get(pc.player_id) ?? 0) + 1);
   }
 
-  // Tenure seasons per player per club (from profile History tables).
+  // Tenure seasons per player per club — only where ≥1 game played (for 2 clubs in one season check).
   const tenureSeasons = new Map<number, Map<number, Set<string>>>();
   for (const pc of opts.playerClubs) {
-    if (!pc.seasons) continue;
+    if (!pc.seasons || (pc.appearances ?? 0) < 1) continue;
     let byClub = tenureSeasons.get(pc.player_id);
     if (!byClub) {
       byClub = new Map();
@@ -707,6 +707,7 @@ const MAX_LABEL_SET_SIZE = 400;
 const DEPRECATED_BAND_LABELS: Partial<Record<BandedCategory, string[]>> = {
   appearances: ["25+"],
   yellow_cards: ["10+"],
+  mid_season: ["2+ Clubs in One Season"],
 };
 
 /**

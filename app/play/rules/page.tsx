@@ -29,7 +29,7 @@ const CAREER_ONLY = [
   ["Joe Marston Medal", "times won best-on-ground in a grand final"],
   ["Finals Apps / Finals Goals", "finals stats are tracked career-wide only"],
   ["Own Goals", "own goals are career-wide only"],
-  ["Mid-Season Move", "was registered at two clubs during the same season"],
+  ["Played for 2 Clubs in One Season", "played ≥1 game for two different clubs in the same season"],
   ["Seasons at One Club", "longest spell of distinct seasons at a single club"],
   ["Most Goals in a Game", "career-best single-game tally (hat-trick = 3+)"],
   ["Clubs", "how many A-League clubs the player has played for (≥1 game for each club)"],

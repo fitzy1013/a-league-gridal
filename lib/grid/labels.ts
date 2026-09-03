@@ -48,6 +48,7 @@ export const CATEGORY_INFO: Partial<Record<Category, string>> = {
   club: "Must have played at least 1 game for the club.",
   championships: "Must have played at least 1 game for the club in a championship-winning season.",
   premierships: "Must have played at least 1 game for the club in a premiership-winning season.",
+  mid_season: "Must have played at least 1 game for each club in that season.",
   managed_by:
     "Counts anyone registered at the club in a season this manager was in charge — they don't need to have played under them.",
 
@@ -83,6 +84,12 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
     { label: "50+", min: 50, max: Infinity },
     { label: "100+", min: 100, max: Infinity },
     { label: "200+", min: 200, max: Infinity },
+    { label: "Under 10", min: 0, max: 9 },
+    { label: "10-24", min: 10, max: 24 },
+    { label: "25-74", min: 25, max: 74 },
+    { label: "75+", min: 75, max: Infinity },
+    { label: "150+", min: 150, max: Infinity },
+    { label: "250+", min: 250, max: Infinity },
   ],
   goals: [
     { label: "Under 5", min: 0, max: 4 },
@@ -90,6 +97,13 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
     { label: "20-50", min: 20, max: 50 },
     { label: "50+", min: 50, max: Infinity },
     { label: "100+", min: 100, max: Infinity },
+    { label: "Under 10", min: 0, max: 9 },
+    { label: "5-15", min: 5, max: 15 },
+    { label: "15-30", min: 15, max: 30 },
+    { label: "30-60", min: 30, max: 60 },
+    { label: "30+", min: 30, max: Infinity },
+    { label: "40+", min: 40, max: Infinity },
+    { label: "75+", min: 75, max: Infinity },
   ],
   red_cards: [
     { label: "0", min: 0, max: 0 },
@@ -110,6 +124,13 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
     { label: "1000-4999", min: 1000, max: 4999 },
     { label: "5000+", min: 5000, max: Infinity },
     { label: "10000+", min: 10000, max: Infinity },
+    { label: "Under 500", min: 0, max: 499 },
+    { label: "500-2000", min: 500, max: 2000 },
+    { label: "2000-5000", min: 2000, max: 5000 },
+    { label: "5000-8000", min: 5000, max: 8000 },
+    { label: "8000-12000", min: 8000, max: 12000 },
+    { label: "12000+", min: 12000, max: Infinity },
+    { label: "15000+", min: 15000, max: Infinity },
   ],
   clubs: [
     { label: "Under 3", min: 1, max: 2 },
@@ -131,6 +152,12 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
     { label: "10+", min: 10, max: Infinity },
     { label: "25+", min: 25, max: Infinity },
     { label: "50+", min: 50, max: Infinity },
+    { label: "Under 10", min: 0, max: 9 },
+    { label: "5-15", min: 5, max: 15 },
+    { label: "15-30", min: 15, max: 30 },
+    { label: "30-60", min: 30, max: 60 },
+    { label: "60+", min: 60, max: Infinity },
+    { label: "75+", min: 75, max: Infinity },
   ],
   debut_age: [
     { label: "U19", min: 0, max: 19 },
@@ -145,6 +172,12 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
     { label: "45%+", min: 45, max: Infinity },
     { label: "Under 35%", min: 0, max: 34.999999 },
     { label: "Under 45%", min: 0, max: 44.999999 },
+    { label: "70%+", min: 70, max: Infinity },
+    { label: "65%+", min: 65, max: Infinity },
+    { label: "50%+", min: 50, max: Infinity },
+    { label: "Under 30%", min: 0, max: 29.999999 },
+    { label: "Under 40%", min: 0, max: 39.999999 },
+    { label: "30-45%", min: 30, max: 45 },
   ],
   own_goals: [
     { label: "1+", min: 1, max: Infinity },
@@ -189,6 +222,7 @@ export const NUMERIC_BANDS: Record<BandedCategory, NumericBand[]> = {
   ],
   mid_season: [
     { label: "2+ Clubs in One Season", min: 1, max: Infinity },
+    { label: "Played for 2 Clubs in One Season", min: 1, max: Infinity },
   ],
   one_club_stint: [
     { label: "3+", min: 3, max: Infinity },

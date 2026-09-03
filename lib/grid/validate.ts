@@ -12,7 +12,7 @@ function titleForAward(category: Category): string {
   return AWARD_TITLES[category] ?? "";
 }
 
-/** Player's tenure seasons (from player_clubs.seasons). */
+/** Player's tenure seasons where ≥1 game played (for 2 clubs in one season check). */
 async function playerSeasons(
   db: SupabaseClient,
   playerId: number,
@@ -20,9 +20,10 @@ async function playerSeasons(
   const out = new Map<number, Set<string>>();
   const { data } = await db
     .from("player_clubs")
-    .select("club_id,seasons")
+    .select("club_id,seasons,appearances")
     .eq("player_id", playerId);
   for (const r of data ?? []) {
+    if ((r.appearances ?? 0) < 1) continue;
     const set = new Set<string>();
     for (const s of String(r.seasons ?? "").split(",")) {
       const t = s.trim();
