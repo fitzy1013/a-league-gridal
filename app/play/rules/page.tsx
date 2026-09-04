@@ -34,7 +34,7 @@ const CAREER_ONLY = [
   ["Most Goals in a Game", "career-best single-game tally (hat-trick = 3+)"],
   ["Clubs", "how many A-League clubs the player has played for (≥1 game for each club)"],
   ["Managed By", "player just needs to be registered at the club in a season that manager was in charge"],
-  ["Nationality", "nationality of the player, unchanged by clubs"],
+  ["Nationality", "nationality of the player, unchanged by clubs — dual nationals (e.g. England / New Zealand) qualify for either country"],
 ];
 
 export default async function RulesPage() {
