@@ -6,7 +6,6 @@ import { getTodayGrid } from "@/lib/db/queries";
 import type { Category, CellSolution } from "@/lib/grid/types";
 import { createClient } from "@/lib/supabase/server";
 import { todaySydneyDate } from "@/lib/dates";
-import { themeForDate, themeLabel } from "@/lib/grid/generate-daily";
 
 export const instant = false;
 
@@ -47,14 +46,9 @@ export default async function DailyPage() {
     solution: grid.solution as CellSolution[],
   };
 
-  const theme = themeForDate(today);
-
   return (
     <div className="flex justify-center">
       <div className="w-full max-w-xl">
-        <div className="mb-2 flex items-center gap-2">
-          <span className="rounded-full bg-accent px-3 py-1 text-xs font-medium">Theme: {themeLabel(theme)}</span>
-        </div>
         {process.env.NODE_ENV === "development" && <DevThemeCycler />}
         <GameGrid spec={spec} userId={user?.id ?? null} />
       </div>

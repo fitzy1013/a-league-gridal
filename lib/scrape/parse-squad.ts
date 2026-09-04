@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import { normalizePosition, UAL_BASE } from "./ual";
+import { joinNationalities, normalizePosition, UAL_BASE } from "./ual";
 import type { ParsedSquadMember } from "./types";
 
 /**
@@ -37,12 +37,17 @@ export function parseSquadPage(html: string, clubId: number, clubName: string): 
       .trim();
     const position = normalizePosition(positionRaw.replace(/,.*$/, "").trim());
 
-    const flagImg = $(a).find("img.nationality-flag").first();
+    const flagImgs = $(a).find("img.nationality-flag");
     let nationality: string | undefined;
     let nationalityFlagUrl: string | undefined;
-    if (flagImg.length > 0) {
-      nationality = flagImg.attr("alt") ?? undefined;
-      const src = flagImg.attr("src");
+    if (flagImgs.length > 0) {
+      const alts: string[] = [];
+      flagImgs.each((_, img) => {
+        const alt = $(img).attr("alt");
+        if (alt) alts.push(alt);
+      });
+      nationality = joinNationalities(alts);
+      const src = flagImgs.first().attr("src");
       if (src) {
         nationalityFlagUrl = src.startsWith("http") ? src : `${UAL_BASE}${src}`;
       }

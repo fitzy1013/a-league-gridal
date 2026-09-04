@@ -13,6 +13,7 @@ import {
   clubAllPlayersUrl,
   fetchHtml,
   generalStatsUrl,
+  joinNationalities,
   playerAwardsUrl,
   playerStatsShowUrl,
   playerStatsUrl,
@@ -52,6 +53,13 @@ export async function runScrape(): Promise<ScrapeResult> {
   const playerMap = new Map<number, ParsedPlayerRow>();
   const statsMap = new Map<string, ParsedSeasonStats>();
 
+  const mergeNationality = (a?: string, b?: string): string | undefined => {
+    if (!a) return b;
+    if (!b) return a;
+    if (a === b) return a;
+    // Union parts so a dual on one page isn't lost to a single on another
+    return joinNationalities([...a.split("/"), ...b.split("/")]) ?? a;
+  };
   const mergePage = (page: { players: ParsedPlayerRow[]; stats: ParsedSeasonStats[] }) => {
     for (const p of page.players) {
       const existing = playerMap.get(p.playerId);
@@ -61,7 +69,7 @@ export async function runScrape(): Promise<ScrapeResult> {
         existing.position ??= p.position;
         existing.clubId ??= p.clubId;
         existing.clubName ??= p.clubName;
-        existing.nationality ??= p.nationality;
+        existing.nationality = mergeNationality(existing.nationality, p.nationality);
         existing.nationalityFlagUrl ??= p.nationalityFlagUrl;
       }
     }
@@ -154,7 +162,7 @@ export async function runScrape(): Promise<ScrapeResult> {
         });
       } else {
         existing.position ??= m.position;
-        existing.nationality ??= m.nationality;
+        existing.nationality = mergeNationality(existing.nationality, m.nationality);
         existing.nationalityFlagUrl ??= m.nationalityFlagUrl;
       }
     }

@@ -4,6 +4,7 @@ import {
   MIN_NATIONALITY_PLAYERS,
   NUMERIC_BANDS,
   positionLabels,
+  splitNationalities,
 } from "./labels";
 import type {
   BandedCategory,
@@ -304,12 +305,15 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
   // players qualifying for both Def and Mid/Fwd.
   const nationalityCounts = new Map<string, number>();
   for (const p of opts.players) {
-    if (!p.nationality) continue;
-    nationalityCounts.set(p.nationality, (nationalityCounts.get(p.nationality) ?? 0) + 1);
+    for (const nat of splitNationalities(p.nationality)) {
+      nationalityCounts.set(nat, (nationalityCounts.get(nat) ?? 0) + 1);
+    }
   }
   for (const p of opts.players) {
-    if (p.nationality && (nationalityCounts.get(p.nationality) ?? 0) >= MIN_NATIONALITY_PLAYERS) {
-      addToMembers("nationality", p.nationality, p.id);
+    for (const nat of splitNationalities(p.nationality)) {
+      if ((nationalityCounts.get(nat) ?? 0) >= MIN_NATIONALITY_PLAYERS) {
+        addToMembers("nationality", nat, p.id);
+      }
     }
     for (const label of positionLabels(p.position)) {
       addToMembers("position", label, p.id);
@@ -850,7 +854,7 @@ export const DEFAULT_HARD_CELL_MAX_ANSWERS = 10;
 
 export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {}): GridSpec {
   const size = opts.size ?? GRID_SIZE;
-  const minDistinctClubs = opts.minDistinctClubs ?? 3;
+  const minDistinctClubs = opts.minDistinctClubs ?? 2;
   const maxDistinctClubs = opts.maxDistinctClubs;
   const maxSingletonCells = opts.maxSingletonCells ?? 1;
   const goodCandidateCount = opts.goodCandidateCount ?? 3;
@@ -937,13 +941,12 @@ function tryGenerate(
     throw new Error("not enough clubs with players in the dataset");
   }
 
-  // 75% of grids feature exactly 3 distinct clubs, the rest 4 (never fewer
-  // than the minDistinctClubs floor). Split between rows and columns with at
-  // least one club on each axis so club x stat cells exist. Drawn below 0.75
-  // because 3-club attempts survive the difficulty gates slightly more often,
-  // which would otherwise skew the surviving distribution to ~80/20.
+  // Prefer fewer Club×Club cells (only ~16 clubs, so they repeat fast).
+  // ~70% of grids use 2 distinct clubs (0-1 Club×Club cells), ~20% use 3,
+  // ~10% use 4. For 2-club grids, half the time both clubs go on the same
+  // axis (0 Club×Club cells), half split 1-1 (1 Club×Club cell).
   // maxDistinctClubs caps this (e.g., statHeavy max 1).
-  let targetClubs = Math.max(minDistinctClubs, rng() < 0.9 ? 3 : 4);
+  let targetClubs = Math.max(minDistinctClubs, rng() < 0.7 ? 2 : rng() < 0.9 ? 3 : 4);
   if (maxDistinctClubs !== undefined) targetClubs = Math.min(targetClubs, maxDistinctClubs);
   if (targetClubs < minDistinctClubs) throw new Error("minDistinctClubs > maxDistinctClubs");
   let kR: number;
@@ -960,6 +963,17 @@ function tryGenerate(
       kR = 0;
       kC = 1;
     }
+  } else if (targetClubs === 2 && rng() < 0.5) {
+    // Same-axis: 0 Club×Club cells (e.g., 2 club rows × 0 club cols)
+    if (rng() < 0.5) {
+      kR = 2;
+      kC = 0;
+    } else {
+      kR = 0;
+      kC = 2;
+    }
+    kR = Math.min(kR, size);
+    kC = Math.min(kC, size);
   } else {
     kR = 1 + Math.floor(rng() * (targetClubs - 1));
     kR = Math.min(kR, size);

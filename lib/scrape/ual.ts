@@ -103,3 +103,21 @@ export function parseIntCell(text: string): number | undefined {
   const match = trimmed.match(/^(\d+)/);
   return match ? Number(match[1]) : undefined;
 }
+
+/**
+ * Joins multiple nationality flag alts into a canonical "A / B" string.
+ * UAL lists dual nationalities as 2 flag imgs — previously only the first
+ * was kept. Sorted alphabetically so "England / New Zealand" is stable
+ * regardless of flag order on the page.
+ */
+export function joinNationalities(alts: (string | undefined | null)[]): string | undefined {
+  const seen = new Map<string, string>();
+  for (const alt of alts) {
+    const t = (alt ?? "").trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (!seen.has(key)) seen.set(key, t);
+  }
+  if (seen.size === 0) return undefined;
+  return [...seen.values()].sort((a, b) => a.localeCompare(b)).join(" / ");
+}

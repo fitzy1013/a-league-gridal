@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { CATEGORY_INFO, CATEGORY_LABELS } from "@/lib/grid/labels";
 import type { Category } from "@/lib/grid/types";
 import { Button } from "@/components/ui/button";
@@ -78,11 +79,25 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
   const [confirming, setConfirming] = useState(false);
   const [counts, setCounts] = useState<CellAnswerCount[] | null>(null);
   const [showResult, setShowResult] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [obscurityEarned, setObscurityEarned] = useState<number | null>(null);
   const recordedRef = useRef(false);
+  // Player ids currently being validated. Prevents the same answer being
+  // submitted in 2 cells before the first validation lands (which would
+  // otherwise let both through as "correct" or burn a cell as incorrect).
+  const pendingRef = useRef<Set<number>>(new Set());
+  // Cells currently being validated ("r,c"). Blocks double-submits
+  // of the same cell.
+  const pendingCellsRef = useRef<Set<string>>(new Set());
+  // Global validating lock: only one guess validates at a time. While set,
+  // other cells can't be guessed and the UI shows a validating indicator.
+  const [validating, setValidating] = useState<{ r: number; c: number; name: string } | null>(null);
+  // Latest cells mirror so completion uses fresh state, not a stale closure.
+  const cellsRef = useRef(cells);
+  useEffect(() => {
+    cellsRef.current = cells;
+  }, [cells]);
 
   // Restore saved progress after mount (client-only, SSR-safe).
   useEffect(() => {
@@ -131,12 +146,25 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
   }, [spec]);
 
   const applyGuess = async (r: number, c: number, player: PlayerOption) => {
-    if (submitting || finished) return;
-    if (usedPlayerIds.includes(player.id)) {
+    if (finished) return;
+    // Another guess is still validating — block other cells until it lands.
+    if (validating) return;
+    const cellKey = `${r},${c}`;
+    // Same cell already validating — ignore double-submit.
+    if (pendingCellsRef.current.has(cellKey)) return;
+    // Target cell already answered (e.g., filled while modal was open).
+    if (cellsRef.current[r]?.[c]?.status !== "empty") {
+      setSelected(null);
+      return;
+    }
+    // Duplicate player (placed or in-flight elsewhere) — hint, keep cell empty.
+    if (usedPlayerIds.includes(player.id) || pendingRef.current.has(player.id)) {
       setHint(`${player.name} has already been used in this grid — pick someone else.`);
       return;
     }
-    setSubmitting(true);
+    pendingRef.current.add(player.id);
+    pendingCellsRef.current.add(cellKey);
+    setValidating({ r, c, name: player.name });
     try {
       let isCorrect = false;
       try {
@@ -162,6 +190,17 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
           obscurity?: number;
         };
         isCorrect = data.correct === true;
+        // Re-check duplicates against the latest cells: the same answer may
+        // have landed in another cell while this one was validating. Never
+        // burn the cell as incorrect for that — keep it empty with a hint.
+        const alreadyUsed = cellsRef.current
+          .flat()
+          .some((c) => c.status === "correct" && c.playerId === player.id);
+        if (alreadyUsed) {
+          setHint(`${player.name} has already been used in this grid — pick someone else.`);
+          setSelected(null);
+          return;
+        }
         setHint(!isCorrect ? (data.hint ?? null) : null);
         if (isCorrect && typeof data.obscurity === "number") {
           setObscurityEarned((prev) => (prev ?? 0) + data.obscurity!);
@@ -172,7 +211,12 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
         isCorrect = false;
       }
 
-      const updated = cells.map((row) => row.slice());
+      // Cell may have been filled while validating (give-up/finish/restore).
+      if (cellsRef.current[r]?.[c]?.status !== "empty") {
+        setSelected(null);
+        return;
+      }
+      const updated = cellsRef.current.map((row) => row.slice());
       updated[r][c] = {
         playerId: player.id,
         playerName: player.name,
@@ -192,7 +236,9 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
         }
       }
     } finally {
-      setSubmitting(false);
+      pendingRef.current.delete(player.id);
+      pendingCellsRef.current.delete(cellKey);
+      setValidating(null);
     }
   };
 
@@ -254,7 +300,13 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
             />
           )}
           {!finished ? (
-            <Button variant="ghost" size="sm" onClick={() => setConfirming(true)} type="button">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirming(true)}
+              type="button"
+              disabled={validating != null}
+            >
               Give up
             </Button>
           ) : (
@@ -311,8 +363,9 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
                 key={`cell-${r}-${c}`}
                 cell={cell}
                 selected={selected?.r === r && selected?.c === c}
-                disabled={finished}
+                disabled={finished || validating != null}
                 onClick={() => {
+                  if (validating || finished) return;
                   setSelected({ r, c });
                   setHint(null);
                 }}
@@ -321,6 +374,13 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
           </Fragment>
         ))}
       </div>
+
+      {validating && (
+        <p className="mt-3 flex items-center gap-2 rounded-md border border-foreground/10 bg-accent/50 px-3 py-2 text-sm">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          Validating {validating.name}…
+        </p>
+      )}
 
       {hint && (
         <p className="mt-3 rounded-md border border-foreground/10 bg-accent/50 px-3 py-2 text-sm">
@@ -368,11 +428,18 @@ export default function GameGrid({ spec, userId }: { spec: ClientGridSpec; userI
                 ×
               </button>
             </div>
-            <GuessInput
-              onSelect={(player) => applyGuess(selected.r, selected.c, player)}
-              onClose={() => setSelected(null)}
-              excludeIds={usedPlayerIds}
-            />
+            {validating && validating.r === selected.r && validating.c === selected.c ? (
+              <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Validating {validating.name}… please wait.
+              </p>
+            ) : (
+              <GuessInput
+                onSelect={(player) => applyGuess(selected.r, selected.c, player)}
+                onClose={() => setSelected(null)}
+                excludeIds={usedPlayerIds}
+              />
+            )}
           </div>
         </div>
       )}

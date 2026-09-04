@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import {
+  joinNationalities,
   normalizePosition,
   parseIntCell,
   UAL_BASE,
@@ -62,9 +63,13 @@ export function parsePlayerStatsPage(
     let nationality: string | undefined;
     let nationalityFlagUrl: string | undefined;
     if (nationalityDetail.length > 0) {
-      const flagImg = nationalityDetail.find("img.nationality-flag").first();
-      nationality = flagImg.attr("alt") ?? (nationalityDetail.text().trim() || undefined);
-      const src = flagImg.attr("src");
+      const alts: string[] = [];
+      nationalityDetail.find("img.nationality-flag").each((_, img) => {
+        const alt = $(img).attr("alt");
+        if (alt) alts.push(alt);
+      });
+      nationality = joinNationalities(alts) ?? (nationalityDetail.text().trim() || undefined);
+      const src = nationalityDetail.find("img.nationality-flag").first().attr("src");
       if (src) {
         nationalityFlagUrl = src.startsWith("http") ? src : `${UAL_BASE}${src}`;
       }
@@ -173,9 +178,13 @@ export function parseAllPlayersPage(
     let nationality: string | undefined;
     let nationalityFlagUrl: string | undefined;
     if (nationalityDetail.length > 0) {
-      const flagImg = nationalityDetail.find("img.nationality-flag").first();
-      nationality = flagImg.attr("alt") ?? (nationalityDetail.text().trim() || undefined);
-      const src = flagImg.attr("src");
+      const alts: string[] = [];
+      nationalityDetail.find("img.nationality-flag").each((_, img) => {
+        const alt = $(img).attr("alt");
+        if (alt) alts.push(alt);
+      });
+      nationality = joinNationalities(alts) ?? (nationalityDetail.text().trim() || undefined);
+      const src = nationalityDetail.find("img.nationality-flag").first().attr("src");
       if (src) {
         nationalityFlagUrl = src.startsWith("http") ? src : `${UAL_BASE}${src}`;
       }

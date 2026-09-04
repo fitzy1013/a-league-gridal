@@ -1,6 +1,7 @@
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { createAdminClient } from "@/lib/db/supabase-admin";
-import { buildDailyCandidate, loadDailyContext } from "@/lib/grid/generate-daily";
+import { buildDailyCandidate, loadDailyContext, themeForDate, themeLabel } from "@/lib/grid/generate-daily";
+import { todaySydneyDate, tomorrowSydneyDate } from "@/lib/dates";
 import { cellAnswers } from "@/lib/grid/answers";
 
 export const maxDuration = 60;
@@ -15,9 +16,14 @@ export async function POST(request: Request) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  const body = (await request.json().catch(() => null)) as { target?: "today" | "tomorrow"; themeOverride?: Parameters<typeof buildDailyCandidate>[1] } | null;
+  const target = body?.target === "today" ? "today" : "tomorrow";
+  const date = target === "today" ? todaySydneyDate() : tomorrowSydneyDate();
+  const theme = body?.themeOverride ?? themeForDate(date);
+
   const supabase = createAdminClient();
   const ctx = await loadDailyContext(supabase);
-  const grid = buildDailyCandidate(ctx);
+  const grid = buildDailyCandidate(ctx, theme);
 
   const size = grid.rowValues.length;
   const cells: { r: number; c: number; count: number; sample: string[] }[] = [];
@@ -39,5 +45,5 @@ export async function POST(request: Request) {
     }
   }
 
-  return Response.json({ ok: true, grid, cells });
+  return Response.json({ ok: true, grid, cells, theme, themeLabel: themeLabel(theme), date });
 }

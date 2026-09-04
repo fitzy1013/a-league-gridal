@@ -16,6 +16,9 @@ interface PreviewResponse {
   ok?: boolean;
   grid?: GridSpec;
   cells?: PreviewCell[];
+  theme?: string;
+  themeLabel?: string;
+  date?: string;
   error?: string;
 }
 
@@ -36,6 +39,7 @@ export default function AdminDailyPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [target, setTarget] = useState<"tomorrow" | "today">("tomorrow");
+  const [themeInfo, setThemeInfo] = useState<{ theme?: string; label?: string; date?: string } | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem(SECRET_KEY);
@@ -50,8 +54,13 @@ export default function AdminDailyPage() {
   const generate = useCallback(async () => {
     setBusy(true);
     setMessage(null);
+    setThemeInfo(null);
     try {
-      const res = await fetch("/api/daily-preview", { method: "POST", headers: headers() });
+      const res = await fetch("/api/daily-preview", {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ target }),
+      });
       const data = (await res.json()) as PreviewResponse;
       if (res.status === 401) {
         setMessage(
@@ -65,12 +74,13 @@ export default function AdminDailyPage() {
       }
       setGrid(data.grid);
       setCells(data.cells ?? []);
+      setThemeInfo({ theme: data.theme, label: data.themeLabel, date: data.date });
     } catch {
       setMessage("Request failed");
     } finally {
       setBusy(false);
     }
-  }, [headers]);
+  }, [headers, target]);
 
   const approve = useCallback(async () => {
     if (!grid) return;
@@ -188,6 +198,14 @@ export default function AdminDailyPage() {
       </div>
 
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
+
+      {themeInfo?.label && (
+        <p className="text-sm">
+          <span className="rounded-full bg-accent px-3 py-1 text-xs font-medium">
+            Theme for {themeInfo.date}: {themeInfo.label}
+          </span>
+        </p>
+      )}
 
       {grid && (
         <>

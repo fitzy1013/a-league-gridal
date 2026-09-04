@@ -55,6 +55,19 @@ export const CATEGORY_INFO: Partial<Record<Category, string>> = {
 };
 
 /**
+ * Splits a stored nationality value into its parts. Dual nationalities are
+ * stored as "A / B" (see joinNationalities) — a player qualifies for both.
+ */
+export function splitNationalities(nationality: string | null | undefined): string[] {
+  if (!nationality) return [];
+  const parts = nationality
+    .split("/")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return [...new Set(parts)];
+}
+
+/**
  * Maps a raw UAL position to the grid's grouped position labels.
  * Utility players qualify as both Defender and Mid/Fwd.
  */

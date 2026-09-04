@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { bandForLabel, positionLabels } from "./labels";
+import { bandForLabel, positionLabels, splitNationalities } from "./labels";
 import type { BandedCategory, Category, NumericBand } from "./types";
 
 const AWARD_TITLES: Partial<Record<Category, string>> = {
@@ -106,7 +106,7 @@ export async function playerSatisfiesCriterion(
         .eq("id", playerId)
         .maybeSingle();
       if (!player) return false;
-      return (player.nationality ?? null) === displayLabel;
+      return splitNationalities(player.nationality).includes(displayLabel);
     }
     case "position": {
       const { data: player } = await db
@@ -767,9 +767,10 @@ export async function describeStatValue(
         .select("nationality")
         .eq("id", playerId)
         .maybeSingle();
-      return player?.nationality
-        ? `${playerName}'s nationality is ${player.nationality}`
-        : `${playerName} has no nationality recorded`;
+      const nats = splitNationalities(player?.nationality);
+      if (nats.length === 0) return `${playerName} has no nationality recorded`;
+      if (nats.length === 1) return `${playerName}'s nationality is ${nats[0]}`;
+      return `${playerName}'s nationalities are ${nats.join(" and ")}`;
     }
     case "position": {
       const { data: player } = await db
