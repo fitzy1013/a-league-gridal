@@ -152,7 +152,7 @@ export async function loadDailyContext(
   };
 }
 
-export type DailyTheme = "achievement" | "balanced" | "veryChallenging" | "throwback" | "deepThrowback" | "statHeavy";
+export type DailyTheme = "achievement" | "balanced" | "veryChallenging" | "throwback" | "deepThrowback" | "statHeavy" | "international";
 
 const ACHIEVEMENT_CATEGORIES = new Set<string>([
   "championships",
@@ -165,7 +165,7 @@ const ACHIEVEMENT_CATEGORIES = new Set<string>([
   "multi_goal_game",
 ]);
 
-/** Sydney-local day-of-week → theme. Mon=achievement, Tue=balanced, Wed=veryChallenging, Thu=throwback pre-2013/14, Fri=balanced, Sat=statHeavy, Sun=deepThrowback pre-09/10 */
+/** Sydney-local day-of-week → theme. Mon=achievement, Tue=balanced, Wed=veryChallenging, Thu=throwback pre-2013/14, Fri=balanced, Sat=statHeavy, Sun=international (≥2 non-Aus/NZ nationalities) */
 export function themeForDate(dateStr: string): DailyTheme {
   // dateStr is YYYY-MM-DD in Sydney; parse as Sydney midnight
   const d = new Date(`${dateStr}T12:00:00+10:00`);
@@ -177,7 +177,7 @@ export function themeForDate(dateStr: string): DailyTheme {
     case 4: return "throwback";
     case 5: return "balanced";
     case 6: return "statHeavy";
-    case 0: return "deepThrowback";
+    case 0: return "international";
     default: return "balanced";
   }
 }
@@ -189,6 +189,7 @@ export function themeLabel(theme: DailyTheme): string {
     case "veryChallenging": return "Very Challenging";
     case "throwback": return "Throwback — Era ending ≤2013/14";
     case "deepThrowback": return "Deep Throwback — Era ending ≤09/10";
+    case "international": return "International Day — non-Aus/NZ nationality";
     case "statHeavy": return "Stat Heavy";
   }
 }
@@ -218,6 +219,19 @@ function gridMeetsTheme(grid: GridSpec, theme: DailyTheme): boolean {
       if (!band || band.max > 2009) return false;
     }
   }
+  if (theme === "international") {
+    // Discrete nationality day: at least 1 non-Aus/NZ nationality criterion
+    const excluded = new Set(["australia", "new zealand"]);
+    let count = 0;
+    for (let i = 0; i < cats.length; i++) {
+      if (cats[i] !== "nationality") continue;
+      const v = String(vals[i] ?? "").trim().toLowerCase();
+      const parts = v.split("/").map((s) => s.trim()).filter(Boolean);
+      const allExcluded = parts.length > 0 && parts.every((p) => excluded.has(p));
+      if (!allExcluded) count++;
+    }
+    if (count < 1) return false;
+  }
   if (theme === "statHeavy") {
     const numeric = new Set(["appearances","goals","minutes","win_pct","yellow_cards","red_cards","clean_sheets","debut_age","championships","premierships","own_goals","finals_goals","finals_apps","multi_goal_game"]);
     const numericCount = cats.filter((c) => numeric.has(c)).length;
@@ -239,6 +253,8 @@ function optionsForTheme(theme: DailyTheme): Partial<import("./generator").Gener
       return { minHardCells: 0, hardCellMaxAnswers: 50, minGoodCells: 0, maxFatCells: 9, goodCandidateCount: 1, maxSingletonCells: 3, requiredCategories: [{ category: "era", count: 1 }] };
     case "statHeavy":
       return { minHardCells: 1, hardCellMaxAnswers: 10, minGoodCells: 4, maxFatCells: 2, minDistinctClubs: 0, maxDistinctClubs: 1 };
+    case "international":
+      return { minHardCells: 1, hardCellMaxAnswers: 15, minGoodCells: 3, maxFatCells: 3, requiredCategories: [{ category: "nationality", count: 1 }] };
     case "achievement":
       return { minHardCells: 1, hardCellMaxAnswers: 10, minGoodCells: 4, maxFatCells: 2 };
     case "balanced":
@@ -251,10 +267,12 @@ function optionsForTheme(theme: DailyTheme): Partial<import("./generator").Gener
 export function buildDailyCandidate(ctx: DailyContext, themeOverride?: DailyTheme): GridSpec {
   const dateForTheme = (ctx as any).dateForTheme as string | undefined;
   const theme = themeOverride ?? (dateForTheme ? themeForDate(dateForTheme) : "balanced");
-  // For throwback / deepThrowback, don't ban era criteria
+  // For throwback / deepThrowback, don't ban era criteria; for international, don't ban nationality
   const bannedForTheme = theme === "throwback" || theme === "deepThrowback"
     ? ctx.bannedCriteria.filter((c) => !c.startsWith("era:"))
-    : ctx.bannedCriteria;
+    : theme === "international"
+      ? ctx.bannedCriteria.filter((c) => !c.startsWith("nationality:"))
+      : ctx.bannedCriteria;
   const baseOpts = {
     exclude: ctx.exclude,
     minDiffCriteria: 2,
@@ -264,8 +282,20 @@ export function buildDailyCandidate(ctx: DailyContext, themeOverride?: DailyThem
   };
   const themeOpts = optionsForTheme(theme);
 
-  // For throwback / deepThrowback, restrict era by filtering dataset + boost
+  // For international, exclude Aus/NZ so the generator can't pick them
   let datasetForTheme = ctx.dataset;
+  if (theme === "international") {
+    const filteredMembers = { ...ctx.dataset.members };
+    const natMap = new Map<string, Set<number>>();
+    for (const [label, set] of ctx.dataset.members["nationality"]) {
+      const l = label.trim().toLowerCase();
+      if (l === "australia" || l === "new zealand") continue;
+      natMap.set(label, set);
+    }
+    filteredMembers["nationality"] = natMap;
+    datasetForTheme = { ...ctx.dataset, members: filteredMembers as any } as GridDataset;
+  }
+  // For throwback / deepThrowback, restrict era by filtering dataset + boost
   const eraCap = theme === "throwback" ? 2013 : theme === "deepThrowback" ? 2009 : null;
   if (eraCap !== null) {
     setThrowbackBoost(true);

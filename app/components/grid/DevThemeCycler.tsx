@@ -6,13 +6,14 @@ import type { DailyTheme } from "@/lib/grid/generate-daily";
 import GameGrid from "./GameGrid";
 import type { ClientGridSpec } from "./types";
 
-const THEMES: DailyTheme[] = ["achievement", "balanced", "veryChallenging", "throwback", "deepThrowback", "statHeavy"];
+const THEMES: DailyTheme[] = ["achievement", "balanced", "veryChallenging", "throwback", "deepThrowback", "international", "statHeavy"];
 const LABELS: Record<DailyTheme, string> = {
   achievement: "Achievement (≥2 awards/finals/prem/champ)",
   balanced: "Balanced",
   veryChallenging: "Very Challenging",
   throwback: "Throwback ending ≤2013/14",
   deepThrowback: "Deep Throwback ending ≤09/10",
+  international: "International (non-Aus/NZ)",
   statHeavy: "Stat Heavy",
 };
 
@@ -54,7 +55,7 @@ export default function DevThemeCycler() {
     <div className="mb-6 rounded-lg border border-dashed border-amber-500/50 bg-amber-50 p-4 dark:bg-amber-950/20">
       <h3 className="text-sm font-bold text-amber-900 dark:text-amber-100">DEV — Theme Tester (weekly schedule preview)</h3>
       <p className="mt-1 text-xs text-muted-foreground">
-        Achievement Mon / Balanced Tue & Fri / Very Challenging Wed / Throwback Thu pre-2013/14 / Stat Heavy Sat / Deep Throwback Sun pre-09/10. Click to preview (unlimited, not saved).
+        Achievement Mon / Balanced Tue & Fri / Very Challenging Wed / Throwback Thu / Stat Heavy Sat / International Sun (non-Aus/NZ). Click to preview (unlimited, not saved).
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         {THEMES.map((t) => (

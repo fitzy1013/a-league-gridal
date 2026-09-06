@@ -247,6 +247,21 @@ export function parsePlayerHeight(html: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
+/**
+ * Extracts all nationalities from a UAL profile page. The h1 title carries
+ * one flag img per nationality (dual nationals have 2) — unlike the stats
+ * tables which only show the primary flag.
+ */
+export function parseProfileNationalities(html: string): string | undefined {
+  const $ = cheerio.load(html);
+  const alts: string[] = [];
+  $("img.nationality-flag").each((_, img) => {
+    const alt = $(img).attr("alt");
+    if (alt) alts.push(alt);
+  });
+  return joinNationalities(alts);
+}
+
 export interface ParsedHistoryRow {
   season: string;
   clubIds: number[];

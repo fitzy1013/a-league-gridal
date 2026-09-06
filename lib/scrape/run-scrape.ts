@@ -4,6 +4,7 @@ import {
   parseChampionshipSeasons,
   parseGeneralPage,
   parsePlayerStatsPage,
+  parseProfileNationalities,
   parseSingleValueStats,
 } from "./parse-players";
 import { parseClubTitles, parsePlayerAwards } from "./parse-titles";
@@ -18,6 +19,7 @@ import {
   playerStatsShowUrl,
   playerStatsUrl,
   parseSelectedSeason,
+  UAL_BASE,
 } from "./ual";
 import type { ParsedPlayerRow, ParsedSeasonStats } from "./types";
 
@@ -173,6 +175,46 @@ export async function runScrape(): Promise<ScrapeResult> {
   const clubTitles = parseClubTitles(await fetchHtml(achievementsUrl()));
   const playerTitles = parsePlayerAwards(await fetchHtml(playerAwardsUrl()));
   log.push(`club titles: ${clubTitles.length}, player titles: ${playerTitles.length}`);
+
+  // 6b. Profile-page nationalities: stats/all-players tables only show the
+  // primary flag, but profile h1 carries all flags (dual nationals have 2).
+  // Fetch profiles concurrently and union with table values.
+  {
+    const ids = [...playerMap.keys()];
+    let duals = 0;
+    let done = 0;
+    // NOTE: log.push only prints at the end — use console.log here so the
+    // long profile crawl shows live progress instead of looking hung.
+    console.log(`profile nationalities: checking ${ids.length} profiles…`);
+    const CONCURRENCY = 4;
+    let cursor = 0;
+    const workers = Array.from({ length: CONCURRENCY }, async () => {
+      for (;;) {
+        const i = cursor++;
+        if (i >= ids.length) return;
+        const pid = ids[i];
+        try {
+          const html = await fetchHtml(`${UAL_BASE}/player/?player_id=${pid}`, 15000);
+          const profNat = parseProfileNationalities(html);
+          if (!profNat) continue;
+          const existing = playerMap.get(pid);
+          if (!existing) continue;
+          const merged = mergeNationality(existing.nationality, profNat);
+          if (merged && merged !== existing.nationality) {
+            existing.nationality = merged;
+            if (merged.includes("/")) duals++;
+          }
+        } catch {
+          // per-player failure (incl. timeout) — keep table value
+        } finally {
+          done++;
+          if (done % 100 === 0) console.log(`profile nationalities: ${done}/${ids.length} (${duals} dual so far)`);
+        }
+      }
+    });
+    await Promise.all(workers);
+    log.push(`profile nationalities: ${ids.length} checked, ${duals} dual`);
+  }
 
   // 7. Upserts -----------------------------------------------------------------
   const now = new Date().toISOString();

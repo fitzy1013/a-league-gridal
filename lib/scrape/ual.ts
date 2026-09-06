@@ -57,17 +57,24 @@ export function clubAllPlayersUrl(clubId: number): string {
   return `${UAL_BASE}/club/?club_id=${clubId}&info=allplayers`;
 }
 
-export async function fetchHtml(url: string): Promise<string> {
-  const res = await fetch(url, {
-    headers: {
-      "user-agent": "aliga-gridal/1.0 (+https://github.com; game data scraper)",
-      accept: "text/html,application/xhtml+xml",
-    },
-  });
-  if (!res.ok) {
-    throw new Error(`UAL fetch failed: ${res.status} ${url}`);
+export async function fetchHtml(url: string, timeoutMs = 20000): Promise<string> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "user-agent": "aliga-gridal/1.0 (+https://github.com; game data scraper)",
+        accept: "text/html,application/xhtml+xml",
+      },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      throw new Error(`UAL fetch failed: ${res.status} ${url}`);
+    }
+    return await res.text();
+  } finally {
+    clearTimeout(timer);
   }
-  return res.text();
 }
 
 /** Parses the currently selected season out of the stats page filter. */
