@@ -165,19 +165,19 @@ const ACHIEVEMENT_CATEGORIES = new Set<string>([
   "multi_goal_game",
 ]);
 
-/** Sydney-local day-of-week → theme. Mon=achievement, Tue=balanced, Wed=veryChallenging, Thu=throwback pre-2013/14, Fri=balanced, Sat=statHeavy, Sun=international (≥2 non-Aus/NZ nationalities) */
+/** Sydney-local day-of-week → theme. Mon=international, Tue=balanced, Wed=veryChallenging, Thu=throwback pre-2013/14, Fri=balanced, Sat=statHeavy, Sun=deepThrowback pre-09/10 */
 export function themeForDate(dateStr: string): DailyTheme {
   // dateStr is YYYY-MM-DD in Sydney; parse as Sydney midnight
   const d = new Date(`${dateStr}T12:00:00+10:00`);
   const day = d.getDay(); // 0 Sun .. 6 Sat
   switch (day) {
-    case 1: return "achievement";
+    case 1: return "international";
     case 2: return "balanced";
     case 3: return "veryChallenging";
     case 4: return "throwback";
     case 5: return "balanced";
     case 6: return "statHeavy";
-    case 0: return "international";
+    case 0: return "deepThrowback";
     default: return "balanced";
   }
 }
@@ -311,27 +311,58 @@ export function buildDailyCandidate(ctx: DailyContext, themeOverride?: DailyThem
     setThrowbackBoost(false);
   }
 
-  // Try up to 500 times to meet theme-specific category requirements
+  // Bounded attempts (each generateGrid can itself retry hundreds of times —
+  // keep total well under the 60s route budget). Track best-effort per theme.
+  const themeScore = (grid: GridSpec): number => {
+    const cats = [...grid.rowTypes, ...grid.colTypes] as string[];
+    const vals = [...grid.rowValues, ...grid.colValues];
+    switch (theme) {
+      case "throwback":
+      case "deepThrowback": {
+        const cap = theme === "throwback" ? 2013 : 2009;
+        return cats.filter((c, i) => {
+          if (c !== "era") return false;
+          const band = NUMERIC_BANDS.era.find((b) => b.label === vals[i]);
+          return !!band && band.max <= cap;
+        }).length;
+      }
+      case "achievement":
+        return cats.filter((c) => ACHIEVEMENT_CATEGORIES.has(c)).length;
+      case "international": {
+        const excluded = new Set(["australia", "new zealand"]);
+        return cats.filter((c, i) => {
+          if (c !== "nationality") return false;
+          const parts = String(vals[i] ?? "").toLowerCase().split("/").map((s) => s.trim()).filter(Boolean);
+          return parts.length > 0 && !parts.every((p) => excluded.has(p));
+        }).length;
+      }
+      case "statHeavy": {
+        const numeric = new Set(["appearances","goals","minutes","win_pct","yellow_cards","red_cards","clean_sheets","debut_age","championships","premierships","own_goals","finals_goals","finals_apps","multi_goal_game"]);
+        return cats.filter((c) => numeric.has(c)).length;
+      }
+      default:
+        return 0;
+    }
+  };
   let bestGrid: GridSpec | null = null;
-  let bestEraCount = -1;
-  for (let attempt = 0; attempt < 500; attempt++) {
+  let bestScore = -1;
+  const MAX_THEME_ATTEMPTS = 40;
+  for (let attempt = 0; attempt < MAX_THEME_ATTEMPTS; attempt++) {
     const grid = generateGrid(datasetForTheme, { ...baseOpts, ...themeOpts });
     if (gridMeetsTheme(grid, theme)) {
-      if (theme === "throwback" || theme === "deepThrowback") setThrowbackBoost(false);
+      setThrowbackBoost(false);
       return grid;
-    }
-    if (theme === "throwback" || theme === "deepThrowback") {
-      const eraCount = [...grid.rowTypes, ...grid.colTypes].filter((c) => c === "era").length;
-      if (eraCount > bestEraCount) {
-        bestEraCount = eraCount;
-        bestGrid = grid;
-      }
     }
     if (theme === "balanced" || theme === "veryChallenging") {
       return grid;
     }
+    const s = themeScore(grid);
+    if (s > bestScore) {
+      bestScore = s;
+      bestGrid = grid;
+    }
   }
-  // Fallback: return best attempt for throwback, otherwise random
+  // Fallback: best effort (may not fully meet theme) rather than timing out
   setThrowbackBoost(false);
   if (bestGrid) return bestGrid;
   return generateGrid(datasetForTheme, { ...baseOpts, ...themeOpts });

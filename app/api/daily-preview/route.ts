@@ -21,29 +21,37 @@ export async function POST(request: Request) {
   const date = target === "today" ? todaySydneyDate() : tomorrowSydneyDate();
   const theme = body?.themeOverride ?? themeForDate(date);
 
-  const supabase = createAdminClient();
-  const ctx = await loadDailyContext(supabase);
-  const grid = buildDailyCandidate(ctx, theme);
+  try {
+    const supabase = createAdminClient();
+    const ctx = await loadDailyContext(supabase);
+    const grid = buildDailyCandidate(ctx, theme);
 
-  const size = grid.rowValues.length;
-  const cells: { r: number; c: number; count: number; sample: string[] }[] = [];
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      const { ids, names } = cellAnswers(
-        ctx.dataset,
-        grid.rowTypes[r],
-        grid.rowValues[r],
-        grid.colTypes[c],
-        grid.colValues[c],
-      );
-      cells.push({
-        r,
-        c,
-        count: ids.size,
-        sample: [...ids].slice(0, 5).map((id) => names.get(id) ?? `#${id}`),
-      });
+    const size = grid.rowValues.length;
+    const cells: { r: number; c: number; count: number; sample: string[] }[] = [];
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        const { ids, names } = cellAnswers(
+          ctx.dataset,
+          grid.rowTypes[r],
+          grid.rowValues[r],
+          grid.colTypes[c],
+          grid.colValues[c],
+        );
+        cells.push({
+          r,
+          c,
+          count: ids.size,
+          sample: [...ids].slice(0, 5).map((id) => names.get(id) ?? `#${id}`),
+        });
+      }
     }
-  }
 
-  return Response.json({ ok: true, grid, cells, theme, themeLabel: themeLabel(theme), date });
+    return Response.json({ ok: true, grid, cells, theme, themeLabel: themeLabel(theme), date });
+  } catch (e) {
+    console.error("daily-preview failed:", e);
+    return Response.json(
+      { error: e instanceof Error ? e.message : "generation failed" },
+      { status: 500 },
+    );
+  }
 }

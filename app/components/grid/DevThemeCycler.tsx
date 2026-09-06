@@ -55,7 +55,7 @@ export default function DevThemeCycler() {
     <div className="mb-6 rounded-lg border border-dashed border-amber-500/50 bg-amber-50 p-4 dark:bg-amber-950/20">
       <h3 className="text-sm font-bold text-amber-900 dark:text-amber-100">DEV — Theme Tester (weekly schedule preview)</h3>
       <p className="mt-1 text-xs text-muted-foreground">
-        Achievement Mon / Balanced Tue & Fri / Very Challenging Wed / Throwback Thu / Stat Heavy Sat / International Sun (non-Aus/NZ). Click to preview (unlimited, not saved).
+        International Mon (non-Aus/NZ) / Balanced Tue & Fri / Very Challenging Wed / Throwback Thu / Stat Heavy Sat / Deep Throwback Sun. Click to preview (unlimited, not saved).
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         {THEMES.map((t) => (
