@@ -1,5 +1,5 @@
 import type { GridDataset } from "./generator";
-import { clubStatKey, resolveCriterionLabel } from "./generator";
+import { clubStatKey, eraClubKey, resolveCriterionLabel } from "./generator";
 import { isPairAwareCategory, type BandedCategory, type Category } from "./types";
 
 export interface CellAnswers {
@@ -12,8 +12,9 @@ export interface CellAnswers {
 /**
  * Computes every player who satisfies both cell criteria, using the in-memory
  * membership index. Pair-aware: a Club x stat cell uses the per-club stat
- * membership (e.g. "Melbourne Victory x 20+ Goals" = 20+ goals FOR Victory),
- * while stat x stat cells are career-level intersections.
+ * membership (e.g. "Melbourne Victory x 20+ Goals" = 20+ goals FOR Victory).
+ * Era x Club requires playing for that club IN that era, while stat x stat
+ * cells are career-level intersections.
  *
  * `legacyPairing` forces plain career-wide intersections for grids generated
  * before per-club pairing existed (ruleset != 'v2').
@@ -56,6 +57,17 @@ export function cellAnswers(
     ids = new Set(
       dataset.clubStatMembers.get(clubStatKey(colKey!, rowType as BandedCategory, rowKey)) ??
         [],
+    );
+  } else if (
+    !legacyPairing &&
+    ((rowType === "era" && colType === "club") || (rowType === "club" && colType === "era"))
+  ) {
+    const eraLabel = rowType === "era" ? rowValue : colValue;
+    const clubKey = rowType === "club" ? rowKey : colKey;
+    ids = new Set(
+      clubKey != null
+        ? (dataset.eraClubMembers.get(eraClubKey(eraLabel, clubKey)) ?? [])
+        : [],
     );
   } else {
     const [small, large] = rowSet.size <= colSet.size ? [rowSet, colSet] : [colSet, rowSet];

@@ -135,6 +135,9 @@ export async function runScrape(): Promise<ScrapeResult> {
       red_cards: number | null;
       wins: number | null;
       debut_age: number | null;
+      seasons: string | null;
+      minutes: number | null;
+      clean_sheets: number | null;
     }
   >();
   for (const club of CLUBS) {
@@ -150,6 +153,9 @@ export async function runScrape(): Promise<ScrapeResult> {
         red_cards: m.clubRedCards ?? null,
         wins: m.wins ?? null,
         debut_age: m.debutAge ?? null,
+        seasons: null,
+        minutes: null,
+        clean_sheets: null,
       });
       const existing = playerMap.get(m.playerId);
       if (!existing) {
@@ -258,6 +264,9 @@ export async function runScrape(): Promise<ScrapeResult> {
       red_cards: number | null;
       wins: number | null;
       debut_age: number | null;
+      seasons: string | null;
+      minutes: number | null;
+      clean_sheets: number | null;
     }
   >();
   for (const [key, row] of membership) {
@@ -276,10 +285,42 @@ export async function runScrape(): Promise<ScrapeResult> {
           red_cards: null,
           wins: null,
           debut_age: null,
+          seasons: null,
+          minutes: null,
+          clean_sheets: null,
         });
       }
     }
   }
+  // Preserve history-owned columns (seasons/minutes/clean_sheets) across the
+  // wipe — otherwise every run nukes them and the history crawl must redo all
+  // ~1760 profiles before strict validations work again.
+  const historyCols = new Map<string, { seasons: string | null; minutes: number | null; clean_sheets: number | null }>();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from("player_clubs")
+      .select("player_id,club_id,seasons,minutes,clean_sheets")
+      .range(from, from + 999);
+    if (error) throw new Error(`load existing player_clubs: ${error.message}`);
+    for (const r of data ?? []) {
+      historyCols.set(`${(r as { player_id: number }).player_id}:${(r as { club_id: number }).club_id}`, {
+        seasons: (r as { seasons: string | null }).seasons ?? null,
+        minutes: (r as { minutes: number | null }).minutes ?? null,
+        clean_sheets: (r as { clean_sheets: number | null }).clean_sheets ?? null,
+      });
+    }
+    if (!data || data.length < 1000) break;
+  }
+  for (const [key, row] of clubRows) {
+    const prev = historyCols.get(key);
+    if (prev) {
+      row.seasons = prev.seasons;
+      row.minutes = prev.minutes;
+      row.clean_sheets = prev.clean_sheets;
+    }
+  }
+  const carried = [...clubRows.values()].filter((r) => r.seasons != null).length;
+  log.push(`player_clubs: ${clubRows.size} rows (${carried} keep seasons)`);
   const { error: delErr } = await supabase.from("player_clubs").delete().neq("player_id", 0);
   if (delErr) throw new Error(`clear player_clubs: ${delErr.message}`);
   await upsertChunked(supabase, "player_clubs", [...clubRows.values()], "player_id,club_id");
