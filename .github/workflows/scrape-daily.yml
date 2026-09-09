@@ -2,9 +2,11 @@ name: Daily scrape
 
 # Runs all four scrapers 30 minutes before the daily-grid cron
 # (grid fires at 14:00 UTC = midnight Sydney).
+# Paused for off-season (season starts in ~a month) — re-enable schedule then.
+# Manual runs still available from the Actions tab.
 on:
-  schedule:
-    - cron: "30 13 */2 * *"
+  # schedule:
+  #   - cron: "30 13 */2 * *"
   workflow_dispatch: {} # allows manual runs from the Actions tab
 
 # Never let two scrapes overlap.
