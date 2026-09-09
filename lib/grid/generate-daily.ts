@@ -247,16 +247,15 @@ function optionsForTheme(theme: DailyTheme): Partial<import("./generator").Gener
     case "veryChallenging":
       return { minHardCells: 3, hardCellMaxAnswers: 8, minGoodCells: 6, maxFatCells: 0, goodCandidateCount: 3 };
     case "throwback":
-      // Lax for 2× era (otherwise infeasible) — allow any difficulty, try 2 but fallback to 1 if needed
-      return { minHardCells: 0, hardCellMaxAnswers: 50, minGoodCells: 0, maxFatCells: 9, goodCandidateCount: 1, maxSingletonCells: 3, requiredCategories: [{ category: "era", count: 1 }] };
+      return { minHardCells: 2, hardCellMaxAnswers: 9, minGoodCells: 0, maxFatCells: 2, goodCandidateCount: 1, maxSingletonCells: 3, requiredCategories: [{ category: "era", count: 1 }] };
     case "deepThrowback":
-      return { minHardCells: 0, hardCellMaxAnswers: 50, minGoodCells: 0, maxFatCells: 9, goodCandidateCount: 1, maxSingletonCells: 3, requiredCategories: [{ category: "era", count: 1 }] };
+      return { minHardCells: 2, hardCellMaxAnswers: 9, minGoodCells: 0, maxFatCells: 2, goodCandidateCount: 1, maxSingletonCells: 3, requiredCategories: [{ category: "era", count: 1 }] };
     case "statHeavy":
-      return { minHardCells: 1, hardCellMaxAnswers: 10, minGoodCells: 4, maxFatCells: 2, minDistinctClubs: 0, maxDistinctClubs: 1 };
+      return { minHardCells: 2, hardCellMaxAnswers: 9, minGoodCells: 4, maxFatCells: 2, minDistinctClubs: 0, maxDistinctClubs: 1 };
     case "international":
-      return { minHardCells: 1, hardCellMaxAnswers: 15, minGoodCells: 3, maxFatCells: 3, requiredCategories: [{ category: "nationality", count: 1 }] };
+      return { minHardCells: 2, hardCellMaxAnswers: 9, minGoodCells: 3, maxFatCells: 2, requiredCategories: [{ category: "nationality", count: 1 }] };
     case "achievement":
-      return { minHardCells: 1, hardCellMaxAnswers: 10, minGoodCells: 4, maxFatCells: 2 };
+      return { minHardCells: 2, hardCellMaxAnswers: 9, minGoodCells: 4, maxFatCells: 2 };
     case "balanced":
     default:
       return {};

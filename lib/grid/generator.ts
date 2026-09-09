@@ -850,7 +850,7 @@ export interface GenerateGridOptions {
   requiredCategories?: { category: Category; count: number }[];
 }
 
-export const DEFAULT_HARD_CELL_MAX_ANSWERS = 10;
+export const DEFAULT_HARD_CELL_MAX_ANSWERS = 9;
 
 export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {}): GridSpec {
   const size = opts.size ?? GRID_SIZE;
@@ -860,8 +860,8 @@ export function generateGrid(dataset: GridDataset, opts: GenerateGridOptions = {
   const goodCandidateCount = opts.goodCandidateCount ?? 3;
   const minGoodCells = opts.minGoodCells ?? Math.ceil((size * size) / 2);
   const hardCellMaxAnswers = opts.hardCellMaxAnswers ?? DEFAULT_HARD_CELL_MAX_ANSWERS;
-  const minHardCells = opts.minHardCells ?? 1;
-  const fatCellMinAnswers = opts.fatCellMinAnswers ?? 50;
+  const minHardCells = opts.minHardCells ?? 2;
+  const fatCellMinAnswers = opts.fatCellMinAnswers ?? 75;
   const maxFatCells = opts.maxFatCells ?? 2;
   const exclude = opts.exclude ?? [];
   const minDiffCriteria = opts.minDiffCriteria ?? 2;
@@ -942,11 +942,11 @@ function tryGenerate(
   }
 
   // Prefer fewer Club×Club cells (only ~16 clubs, so they repeat fast).
-  // ~70% of grids use 2 distinct clubs (0-1 Club×Club cells), ~20% use 3,
-  // ~10% use 4. For 2-club grids, half the time both clubs go on the same
+  // ~85% of grids use 2 distinct clubs (0-1 Club×Club cells), ~10% use 3,
+  // ~5% use 4. For 2-club grids, half the time both clubs go on the same
   // axis (0 Club×Club cells), half split 1-1 (1 Club×Club cell).
   // maxDistinctClubs caps this (e.g., statHeavy max 1).
-  let targetClubs = Math.max(minDistinctClubs, rng() < 0.7 ? 2 : rng() < 0.9 ? 3 : 4);
+  let targetClubs = Math.max(minDistinctClubs, rng() < 0.85 ? 2 : rng() < 0.95 ? 3 : 4);
   if (maxDistinctClubs !== undefined) targetClubs = Math.min(targetClubs, maxDistinctClubs);
   if (targetClubs < minDistinctClubs) throw new Error("minDistinctClubs > maxDistinctClubs");
   let kR: number;

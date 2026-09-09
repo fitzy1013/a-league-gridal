@@ -248,7 +248,7 @@ export default function AdminDailyPage() {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Hover a cell for sample answers. Red &gt;50 answers (max 2 allowed), orange &lt;3.
+            Hover a cell for sample answers. Red &gt;75 answers (max 2 allowed), orange &lt;3.
           </p>
 
           <details>
