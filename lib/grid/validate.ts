@@ -427,13 +427,15 @@ export async function playerSatisfiesClubStatCell(
         row.debut_age != null && row.debut_age >= band.min && row.debut_age <= band.max
       );
     case "clean_sheets": {
-      if (band.label !== "Under 5" && row.clean_sheets == null) return false;
-      const v = row.clean_sheets ?? 0;
+      // Matches generator (skips nulls): no recorded value → no band.
+      if (row.clean_sheets == null) return false;
+      const v = row.clean_sheets;
       return v >= band.min && v <= band.max;
     }
     case "minutes": {
-      if (band.label !== "Under 1000" && row.minutes == null) return false;
-      const v = row.minutes ?? 0;
+      // Matches generator (skips nulls): no recorded value → no band.
+      if (row.minutes == null) return false;
+      const v = row.minutes;
       return v >= band.min && v <= band.max;
     }
     case "championships": {
@@ -717,10 +719,12 @@ export async function describeStatValue(
         case "clubs": {
           const { data: pcRows } = await db
             .from("player_clubs")
-            .select("club_id")
+            .select("club_id,appearances")
             .eq("player_id", playerId);
-          const n = new Set((pcRows ?? []).map((r) => r.club_id)).size;
-          return `${playerName} played for ${n} A-League club${plural(n)}`;
+          const n = new Set(
+            (pcRows ?? []).filter((r) => (r.appearances ?? 0) >= 1).map((r) => r.club_id),
+          ).size;
+          return `${playerName} played for ${n} A-League club${plural(n)} (≥1 game each)`;
         }
         default:
           return null;

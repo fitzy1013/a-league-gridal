@@ -150,9 +150,15 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
 
   // Distinct clubs represented per player (one player_clubs row per club, ≥1 game).
   const clubCounts = new Map<number, number>();
+  const clubsByPlayer = new Map<number, Set<number>>();
+  const hasSeasonsData = new Set<number>();
   for (const pc of opts.playerClubs) {
     if ((pc.appearances ?? 0) < 1) continue;
     clubCounts.set(pc.player_id, (clubCounts.get(pc.player_id) ?? 0) + 1);
+    let set = clubsByPlayer.get(pc.player_id);
+    if (!set) { set = new Set<number>(); clubsByPlayer.set(pc.player_id, set); }
+    set.add(pc.club_id);
+    if (pc.seasons) hasSeasonsData.add(pc.player_id);
   }
 
   // Tenure seasons per player per club — only where ≥1 game played (for 2 clubs in one season check).
@@ -243,6 +249,25 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
   }
   const premiershipClubCounts = new Map<number, number>();
   for (const [pid, set] of premiershipClubSets) premiershipClubCounts.set(pid, set.size);
+
+  // Fallback for players with no tenure data at all (history scrape pending):
+  // mirrors validate.ts legacy counting so answers lists and validation agree.
+  {
+    const championClubSet = new Set(opts.championClubIds);
+    for (const [pid, clubs] of clubsByPlayer) {
+      if (hasSeasonsData.has(pid)) continue;
+      if (!championClubCounts.has(pid)) {
+        let n = 0;
+        for (const cid of clubs) if (championClubSet.has(cid)) n++;
+        championClubCounts.set(pid, n);
+      }
+      if (!premiershipClubCounts.has(pid)) {
+        let n = 0;
+        for (const cid of clubs) n += premiershipSeasonSets.get(cid)?.size ?? 0;
+        premiershipClubCounts.set(pid, n);
+      }
+    }
+  }
 
   // Individual awards (Golden Boot / Johnny Warren / Joe Marston).
   const awardCountBy = new Map<string, number>(); // `${playerId}:${title}` -> count
@@ -428,20 +453,21 @@ export function buildDataset(opts: BuildDatasetOptions): GridDataset {
       addClubBand(pc.club_id, "win_pct", (pc.wins / clubApps) * 100, pc.player_id);
     }
     // Championships at THIS club: overlap of the player's tenure seasons with
-    // the club's championship-winning seasons.
+    // the club's championship-winning seasons. Without tenure data, fall back
+    // to the club's total (mirrors validate.ts) rather than excluding.
     const champSeasons = opts.championshipSeasons?.get(pc.club_id);
-    if (champSeasons && pc.seasons) {
+    if (champSeasons) {
       const overlap = pc.seasons
-        .split(",")
-        .filter((s) => champSeasons.has(s.trim())).length;
+        ? pc.seasons.split(",").filter((s) => champSeasons.has(s.trim())).length
+        : champSeasons.size;
       addClubBand(pc.club_id, "championships", overlap, pc.player_id);
     }
     // Premierships at THIS club: same construction.
     const premSeasons = premiershipSeasonSets.get(pc.club_id);
-    if (premSeasons && pc.seasons) {
+    if (premSeasons) {
       const overlap = pc.seasons
-        .split(",")
-        .filter((s) => premSeasons.has(s.trim())).length;
+        ? pc.seasons.split(",").filter((s) => premSeasons.has(s.trim())).length
+        : premSeasons.size;
       addClubBand(pc.club_id, "premierships", overlap, pc.player_id);
     }
   }

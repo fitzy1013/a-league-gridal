@@ -24,7 +24,7 @@ export default async function DailyPage() {
         <h1 className="text-2xl font-bold">No grid published yet</h1>
         <p className="max-w-md text-muted-foreground">
           The daily grid for {today} hasn&apos;t been generated. The scheduled generator runs at
-          04:00 AEST.
+          11pm Sydney time.
         </p>
         {process.env.NODE_ENV === "development" && (
           <Button asChild>

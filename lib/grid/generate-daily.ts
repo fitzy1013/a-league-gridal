@@ -403,10 +403,10 @@ export interface GeneratedDailyResult {
  */
 export async function generateDailyGrid(
   dataset?: GridDataset,
-  opts?: { force?: boolean; themeOverride?: DailyTheme },
+  opts?: { force?: boolean; themeOverride?: DailyTheme; date?: string },
 ): Promise<GeneratedDailyResult> {
   const supabase = createAdminClient();
-  const date = todaySydneyDate();
+  const date = opts?.date ?? todaySydneyDate();
   const theme = opts?.themeOverride ?? themeForDate(date);
 
   if (!opts?.force) {

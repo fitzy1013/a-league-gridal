@@ -50,6 +50,7 @@ export const CATEGORY_INFO: Partial<Record<Category, string>> = {
   premierships: "Must have played at least 1 game for the club in a premiership-winning season.",
   era: "Must have played at least 1 game in this period.",
   mid_season: "Must have played at least 1 game for each club in that season.",
+  clubs: "Must have played at least 1 game for each club.",
   managed_by:
     "Counts anyone registered at the club in a season this manager was in charge — they don't need to have played under them.",
 
